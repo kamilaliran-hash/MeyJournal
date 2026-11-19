@@ -78,6 +78,22 @@ h2{font-size:20px;margin:0 0 4px}
 .day-card.empty .body{background:#fbfaf7;border:1.5px dashed #d9d1c3;box-shadow:none}
 .day-card.empty .dot{background:#c9bfb0}
 @media (max-width:520px){.trip-form .two,.mode-opts{grid-template-columns:1fr}.info{grid-template-columns:1fr}.info dt{margin-top:6px}}
+.tpl-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(170px,1fr));gap:12px;margin-top:14px}
+.tpl{--g1:#9cc9ff;--g2:#4b7bd1;border-radius:16px;padding:16px 14px;min-height:120px;text-align:left;color:#fff;background:linear-gradient(135deg,var(--g1),var(--g2));display:flex;flex-direction:column;gap:3px;box-shadow:var(--shadow);transition:transform .15s}
+.tpl:hover{transform:translateY(-2px)}
+.tpl .em{font-size:30px;line-height:1;margin-bottom:auto}
+.tpl b{font-size:15px;text-shadow:0 1px 2px rgba(0,0,0,.25)}
+.tpl small{opacity:.92;font-size:12px}
+.tpl.gen{background:#fff;color:var(--teal-d);border:2px dashed #b9a9f0}
+.tpl-head{--g1:#9cc9ff;--g2:#4b7bd1;display:flex;gap:14px;align-items:center;margin:-22px -22px 14px;padding:20px 22px;border-radius:18px 18px 0 0;color:#fff;background:linear-gradient(135deg,var(--g1),var(--g2))}
+.tpl-head .em{font-size:40px}
+.tpl-days{margin:0 0 14px;padding-left:22px;max-height:40vh;overflow:auto}
+.tpl-days li{margin-bottom:8px;line-height:1.4}
+.tpl-days li b{display:block}
+.tpl-days li span{color:var(--muted);font-size:14px}
+.mgroup{font-size:12px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-top:12px}
+.offer-music{margin:6px 0}
+#genF .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 /* story player */
 .story{position:fixed;inset:0;z-index:150;background:#05161b;display:flex;flex-direction:column;color:#fff}
 .story canvas{flex:1;min-height:0;width:100%;object-fit:contain;display:block}

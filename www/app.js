@@ -303,7 +303,18 @@ function storyCaption(ch, i, total) {
   const tod = timeOfDay(ch.start), dur = (ch.end - ch.start) / 3600e3;
   const span = dur > 20 ? `${Math.round(dur / 24) + 1} days` : dur > 3 ? `a full ${tod}` : `a ${tod}`;
   const who = trip.travellers ? ` with ${trip.travellers}` : '';
-  const kind = trip.tripType ? `${trip.tripType.toLowerCase()} ` : '';
+  const kind = trip.tripType ? `${/^(Umrah|Hajj)$/.test(trip.tripType) ? trip.tripType : trip.tripType.toLowerCase()} ` : '';
+  if (/umrah|hajj/i.test(trip.tripType || '')) {
+    const pl = place || 'the Holy Land', U = [
+      `Day ${ch.day} in ${pl}. Alhamdulillah for every step of this journey.`,
+      `${cap(tod)} in ${pl} — quiet moments of prayer and reflection.`,
+      `Day ${ch.day}: ${pl}. Hearts full, feet tired, grateful for being here.`,
+      `Blessed ${tod} in ${pl}. ${cap(ph(n, 'moment'))} we will always treasure.`
+    ];
+    if (i === 0) return `Bismillah — our ${trip.tripType} journey${who} begins in ${pl}. May it be accepted.`;
+    if (i === total - 1 && total > 1) return `Our last day, in ${pl}. Leaving with grateful hearts and du'a to return again.`;
+    return U[i % U.length];
+  }
   if (place) {
     if (i === 0) return `Day ${ch.day} of our ${kind}trip${who}: where it all began. We started in ${place} and spent ${span} soaking it in — ${ph(n)} to prove it.`;
     if (i === total - 1 && total > 1) return `The last stop: ${place}. ${ph(n, 'final moment')} before heading home, already planning the next trip.`;
@@ -757,7 +768,7 @@ function homeView() {
       <div style="flex:1">
         <h1 style="font-size:28px">Turn your trip photos into a book</h1>
         <p>Drop in up to ${MAX_PHOTOS.toLocaleString()} photos. MeyJournal reads their dates and GPS, builds a day-by-day timeline with a route map, writes first-draft captions and lays out a print-ready book — softcover, hardcover or layflat.</p>
-        <div class="row"><button class="btn primary" data-act="new-trip">${ICONS.plus} New trip</button><button class="btn ghost" data-act="demo">Try a demo trip</button></div>
+        <div class="row"><button class="btn primary" data-act="new-trip">${ICONS.plus} New trip</button><button class="btn ghost" data-act="templates">Templates & samples</button></div>
       </div>
       <div class="art">${$('#homeBtn svg').outerHTML.replace('<svg', '<svg style="width:120px;height:120px"')}</div>
     </section>
@@ -765,7 +776,8 @@ function homeView() {
     <div class="grid-trips">
       <button class="new-card" data-act="new-trip"><span class="plus">+</span>New trip</button>
       ${cards}
-    </div>`;
+    </div>
+    ${templatesSection()}`;
 }
 async function loadCardCovers() {
   for (const t of S.trips) {
@@ -928,7 +940,7 @@ function dailyView() {
         <div class="body">
           <div class="kicker">Day ${n} · ${fmtDay(k)}${inRange ? '' : ' · outside trip dates'}</div>
           <input class="title" data-df="place" value="${esc(d.place || (ch && ch.title && !/^Day \d+$/.test(ch.title) ? ch.title : ''))}" placeholder="📍 Add a place for day ${n}">
-          <textarea data-df="caption" rows="2" placeholder="What happened today? (or let Story mode write it)">${esc(ch ? ch.caption : (d.caption || ''))}</textarea>
+          <textarea data-df="caption" rows="2" placeholder="${d.plan ? 'Plan: ' + esc(d.plan) : 'What happened today? (or let Story mode write it)'}">${esc(ch ? ch.caption : (d.caption || ''))}</textarea>
           ${ch ? `<div class="thumbs">${ch.photoIds.map(id => { const p = S.photos.get(id); if (!p) return ''; return `
             <div class="thumb" data-pid="${id}"><img loading="lazy" src="${thumbURL(p)}" alt="">
               <div class="acts"><button class="ib ${t.coverId === id ? 'on' : ''}" data-act="cover" title="Use as book cover">★</button><span class="row" style="gap:4px"><button class="ib" data-act="move-day" title="Move to another day">⇄</button><button class="ib" data-act="del-photo" title="Remove from trip">✕</button></span></div>
@@ -1011,7 +1023,7 @@ function settingsView() {
   </div>`;
 }
 
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.3.0';
 function showAbout() {
   const logo = $('#homeBtn svg').outerHTML.replace('<svg', '<svg style="width:72px;height:72px"');
   const m = modal(`<div style="text-align:center">${logo}
@@ -1105,28 +1117,133 @@ async function exportPDF() {
   } catch (e) { pg.close(); console.error(e); toast('Export failed: ' + e.message); }
 }
 
-/* Demo trip: painted placeholder photos across Malaysia (no network needed) */
-async function demoTrip() {
-  const stops = [
-    { lat: 2.195, lon: 102.249, sky: ['#ffb37a', '#ff7a59'], ground: '#8c3b2e', kind: 'city' },
-    { lat: 3.141, lon: 101.69, sky: ['#7ec8ff', '#d8f0ff'], ground: '#40525c', kind: 'towers' },
-    { lat: 4.47, lon: 101.38, sky: ['#cfe8d5', '#f2f7f0'], ground: '#3e7d4d', kind: 'hills' },
-    { lat: 5.414, lon: 100.33, sky: ['#ffd27a', '#ffe9c2'], ground: '#a35b3c', kind: 'city' },
-    { lat: 6.35, lon: 99.8, sky: ['#5ec4e0', '#c2f0ff'], ground: '#e9d4a3', kind: 'beach' }
+/* ---------------- Trip templates & sample trips ---------------- */
+// kind = what the painted sample photos look like
+const TEMPLATES = [
+  { id: 'my', emoji: '🇲🇾', title: 'Malaysia Road Trip', destination: 'Malaysia', tripType: 'Road trip', grad: ['#ffb37a', '#ff7a59'], days: [
+    { place: 'Melaka', lat: 2.195, lon: 102.249, kind: 'city', plan: 'Jonker Street, Stadthuys and a river cruise at dusk.' },
+    { place: 'Kuala Lumpur', lat: 3.141, lon: 101.69, kind: 'towers', plan: 'Petronas Towers, Batu Caves and street food in Jalan Alor.' },
+    { place: 'Cameron Highlands', lat: 4.47, lon: 101.38, kind: 'hills', plan: 'Tea plantations, strawberry farms and cool mountain air.' },
+    { place: 'George Town', lat: 5.414, lon: 100.33, kind: 'city', plan: 'Street art, clan jetties and char kway teow.' },
+    { place: 'Langkawi', lat: 6.35, lon: 99.8, kind: 'beach', plan: 'Cable car, SkyBridge and sunset at Pantai Cenang.' }] },
+  { id: 'salzburg', emoji: '🏔️', title: 'Salzburg & the Alps', destination: 'Salzburg, Austria', tripType: 'Family', grad: ['#9cc9ff', '#4b7bd1'], days: [
+    { place: 'Salzburg Old Town', lat: 47.80, lon: 13.045, kind: 'city', plan: 'Arrive, walk Getreidegasse and Mozart’s birthplace.' },
+    { place: 'Hohensalzburg Fortress', lat: 47.795, lon: 13.047, kind: 'castle', plan: 'Funicular up to the fortress, views over the city.' },
+    { place: 'Hallstatt', lat: 47.562, lon: 13.649, kind: 'lake', plan: 'Lakeside village, boat ride and the skywalk.' },
+    { place: 'Untersberg', lat: 47.72, lon: 13.0, kind: 'mountain', plan: 'Cable car to the snowy peak.' },
+    { place: 'Mirabell Gardens', lat: 47.806, lon: 13.042, kind: 'garden', plan: 'Gardens, last souvenirs and apple strudel.' }] },
+  { id: 'umrah', emoji: '🕋', title: 'Umrah Journey', destination: 'Makkah & Madinah', tripType: 'Umrah', grad: ['#d9c49a', '#7a6a4f'], days: [
+    { place: 'Madinah', lat: 24.467, lon: 39.611, kind: 'mosque', plan: 'Arrive in Madinah, first prayers at Masjid an-Nabawi.' },
+    { place: 'Madinah', lat: 24.467, lon: 39.611, kind: 'mosque', plan: 'Ziarah: Quba Mosque and Mount Uhud.' },
+    { place: 'Madinah', lat: 24.467, lon: 39.611, kind: 'mosque', plan: 'Quiet day of ibadah and dates market.' },
+    { place: 'Makkah', lat: 21.4225, lon: 39.826, kind: 'mosque', plan: 'Travel to Makkah and perform Umrah.' },
+    { place: 'Makkah', lat: 21.4225, lon: 39.826, kind: 'mosque', plan: 'Prayers at Masjidil Haram.' },
+    { place: 'Makkah', lat: 21.4225, lon: 39.826, kind: 'mosque', plan: 'Ziarah: Jabal Rahmah, Arafah and Mina.' },
+    { place: 'Jeddah', lat: 21.543, lon: 39.172, kind: 'beach', plan: 'Corniche walk and the floating mosque before flying home.' }] },
+  { id: 'japan', emoji: '🗾', title: 'Japan Highlights', destination: 'Japan', tripType: 'Holiday', grad: ['#ffc6d9', '#d9577f'], days: [
+    { place: 'Tokyo', lat: 35.68, lon: 139.76, kind: 'towers', plan: 'Shibuya crossing, Shinjuku lights.' },
+    { place: 'Tokyo', lat: 35.71, lon: 139.8, kind: 'temple', plan: 'Asakusa, Senso-ji and Tokyo Skytree.' },
+    { place: 'Mount Fuji', lat: 35.36, lon: 138.73, kind: 'mountain', plan: 'Lake Kawaguchiko and Fuji views.' },
+    { place: 'Kyoto', lat: 35.01, lon: 135.77, kind: 'temple', plan: 'Fushimi Inari gates and Gion at night.' },
+    { place: 'Kyoto', lat: 35.02, lon: 135.67, kind: 'garden', plan: 'Arashiyama bamboo grove.' },
+    { place: 'Nara', lat: 34.69, lon: 135.8, kind: 'temple', plan: 'Deer park and Todai-ji.' },
+    { place: 'Osaka', lat: 34.69, lon: 135.5, kind: 'city', plan: 'Dotonbori street food and the castle.' }] },
+  { id: 'bali', emoji: '🌴', title: 'Bali Island Escape', destination: 'Bali, Indonesia', tripType: 'Honeymoon', grad: ['#7fe0d4', '#159a8c'], days: [
+    { place: 'Ubud', lat: -8.507, lon: 115.263, kind: 'hills', plan: 'Tegallalang rice terraces and swings.' },
+    { place: 'Ubud', lat: -8.519, lon: 115.26, kind: 'temple', plan: 'Monkey forest and a Balinese cooking class.' },
+    { place: 'Nusa Penida', lat: -8.727, lon: 115.544, kind: 'beach', plan: 'Kelingking beach and snorkelling.' },
+    { place: 'Uluwatu', lat: -8.829, lon: 115.085, kind: 'beach', plan: 'Cliff temple and kecak dance at sunset.' },
+    { place: 'Seminyak', lat: -8.69, lon: 115.17, kind: 'beach', plan: 'Beach clubs and last swim.' }] },
+  { id: 'langkawi', emoji: '🏝️', title: 'Langkawi Family Weekend', destination: 'Langkawi, Malaysia', tripType: 'Family', grad: ['#5ec4e0', '#1f7fa6'], days: [
+    { place: 'Pantai Cenang', lat: 6.29, lon: 99.73, kind: 'beach', plan: 'Check in, beach and sunset dinner.' },
+    { place: 'SkyBridge', lat: 6.386, lon: 99.663, kind: 'mountain', plan: 'Cable car, SkyBridge and the eagle square.' },
+    { place: 'Kilim Geoforest', lat: 6.41, lon: 99.86, kind: 'lake', plan: 'Mangrove boat tour, then fly home.' }] },
+  { id: 'turkey', emoji: '🎈', title: 'Istanbul & Cappadocia', destination: 'Türkiye', tripType: 'Holiday', grad: ['#ffd27a', '#c76b3a'], days: [
+    { place: 'Istanbul', lat: 41.008, lon: 28.978, kind: 'mosque', plan: 'Blue Mosque, Hagia Sophia and the Grand Bazaar.' },
+    { place: 'Istanbul', lat: 41.04, lon: 29.0, kind: 'city', plan: 'Bosphorus cruise and Galata Tower.' },
+    { place: 'Cappadocia', lat: 38.64, lon: 34.83, kind: 'balloon', plan: 'Sunrise hot-air balloons.' },
+    { place: 'Cappadocia', lat: 38.66, lon: 34.85, kind: 'hills', plan: 'Fairy chimneys and the underground city.' },
+    { place: 'Istanbul', lat: 41.01, lon: 28.97, kind: 'city', plan: 'Last çay and baklava before flying home.' }] }
+];
+
+/** Make a day-by-day plan for any destination (offline): uses the built-in city list for nearby day trips. */
+function generateTemplate(dest, nDays, tripType) {
+  nDays = Math.max(1, Math.min(30, nDays | 0));
+  const q = dest.toLowerCase().split(',')[0].trim();
+  const base = CITIES.find(c => c.name.toLowerCase() === q) || CITIES.find(c => c.name.toLowerCase().includes(q) || q.includes(c.name.toLowerCase()) || c.country.toLowerCase() === q);
+  const name = base ? base.name : dest.split(',')[0].trim() || 'My destination';
+  const near = base ? CITIES.filter(c => c !== base && km(c, base) < 350).sort((a, b) => km(a, base) - km(b, base)).slice(0, 4) : [];
+  const fam = /family/i.test(tripType || ''), kinds = ['city', 'garden', 'hills', 'lake', 'beach', 'temple', 'mountain'];
+  const ideas = [
+    `Explore ${name}: the old town, main square and local market.`,
+    `Museums, cafés and a slow lunch in ${name}.`,
+    fam ? `A playground, park or zoo day for the kids in ${name}.` : `Hidden corners of ${name} and a sunset viewpoint.`,
+    `Food tour: try ${name}'s best local dishes.`,
+    `Nature day outside ${name}: hike, lake or beach.`,
+    `Free day — shopping and souvenirs in ${name}.`
   ];
-  await newTrip('Malaysia Road Trip', { theme: 'classic', cover: 'hardcover', size: 'square' });
-  const pg = progress('Painting demo photos');
-  const base = new Date(2026, 7, 10, 8, 30).getTime();
-  const total = 34; let made = 0;
-  for (let s = 0; s < stops.length; s++) {
-    const st = stops[s], n = s === 1 ? 9 : s === 4 ? 8 : 6;
-    for (let k = 0; k < n; k++) {
+  const days = [];
+  for (let i = 0; i < nDays; i++) {
+    const p = base || { lat: null, lon: null };
+    if (i === 0) days.push({ place: name, lat: p.lat, lon: p.lon, kind: 'city', plan: `Arrive in ${name}, check in and take a first walk around.` });
+    else if (i === nDays - 1 && nDays > 1) days.push({ place: name, lat: p.lat, lon: p.lon, kind: 'garden', plan: `Last breakfast in ${name}, final photos and head home.` });
+    else if (near.length && i % 3 === 2) { const n = near[(Math.floor(i / 3)) % near.length]; days.push({ place: n.name, lat: n.lat, lon: n.lon, kind: kinds[i % kinds.length], plan: `Day trip to ${n.name}.` }); }
+    else days.push({ place: name, lat: p.lat, lon: p.lon, kind: kinds[i % kinds.length], plan: ideas[(i - 1) % ideas.length] });
+  }
+  return { id: 'gen', emoji: '✨', title: `${name} in ${nDays} day${nDays > 1 ? 's' : ''}`, destination: base ? `${base.name}, ${base.country}` : dest, tripType: tripType || 'Holiday', grad: ['#c9b8ff', '#6a4fd1'], days };
+}
+
+function templatesSection() {
+  return `<h2 style="margin-top:30px">Start from a template</h2>
+    <div class="sub">See a full sample trip with story & photo book, or use one as the day-by-day plan for your own trip.</div>
+    <div class="tpl-grid">
+      <button class="tpl gen" data-act="tpl-gen"><span class="em">✨</span><b>Generate a plan</b><small>Any destination, any number of days</small></button>
+      ${TEMPLATES.map(t => `<button class="tpl" data-tpl="${t.id}" style="--g1:${t.grad[0]};--g2:${t.grad[1]}"><span class="em">${t.emoji}</span><b>${esc(t.title)}</b><small>${t.days.length} days · ${esc(t.tripType)}</small></button>`).join('')}
+    </div>`;
+}
+function showTemplate(tp) {
+  const m = modal(`<div class="tpl-head" style="--g1:${tp.grad[0]};--g2:${tp.grad[1]}"><span class="em">${tp.emoji}</span><div><h2 style="margin:0">${esc(tp.title)}</h2><div>${esc(tp.destination)} · ${tp.days.length} days · ${esc(tp.tripType)}</div></div></div>
+    <ol class="tpl-days">${tp.days.map(d => `<li><b>${esc(d.place)}</b><span>${esc(d.plan)}</span></li>`).join('')}</ol>
+    <div class="field"><label>Start date (for “Use for my trip”)</label><input type="date" id="tplStart" value="${ymd(Date.now() + 30 * 864e5)}"></div>
+    <div class="row" style="justify-content:space-between;gap:8px">
+      <button class="btn line" data-a="no">Close</button>
+      <span class="row" style="gap:8px"><button class="btn line" data-a="sample">▶ See sample</button><button class="btn primary" data-a="use">Use for my trip</button></span>
+    </div>`);
+  m.el.addEventListener('click', async e => {
+    const a = e.target.closest('[data-a]');
+    if (!a && e.target !== m.el) return;
+    const act = a ? a.dataset.a : 'no', start = $('#tplStart', m.el).value;
+    m.close();
+    if (act === 'sample') sampleTrip(tp);
+    if (act === 'use') useTemplate(tp, start || ymd(Date.now()));
+  });
+}
+function addDays(key, n) { const d = new Date(parseYmd(key)); d.setDate(d.getDate() + n); return ymd(d.getTime()); }
+async function useTemplate(tp, start) {
+  const days = {};
+  tp.days.forEach((d, i) => { days[addDays(start, i)] = { place: d.place, plan: d.plan }; });
+  await newTrip(tp.title, { destination: tp.destination, tripType: tp.tripType, startDate: start, endDate: addDays(start, tp.days.length - 1), uploadMode: 'daily', days, fromTemplate: tp.id });
+  toast('Plan ready — add your photos to each day');
+}
+/** Full sample trip with painted photos, captions, story and book — nothing needs the network. */
+async function sampleTrip(tp) {
+  const start = '2026-08-10';
+  const days = {};
+  tp.days.forEach((d, i) => { days[addDays(start, i)] = { place: d.place, plan: d.plan }; });
+  await newTrip(tp.title + ' (sample)', { destination: tp.destination, tripType: tp.tripType, travellers: tp.tripType === 'Family' ? 'the family' : '', startDate: start, endDate: addDays(start, tp.days.length - 1), uploadMode: 'daily', days, sample: true });
+  const per = tp.days.length > 5 ? 4 : 6, total = per * tp.days.length;
+  const pg = progress('Creating sample photos');
+  let made = 0;
+  for (let s = 0; s < tp.days.length; s++) {
+    const st = tp.days[s], key = addDays(start, s);
+    for (let k = 0; k < per; k++) {
       const portrait = k % 4 === 2, w = portrait ? 900 : 1200, h = portrait ? 1200 : 900;
       const c = mkCanvas(w, h), x = c.getContext('2d');
-      paintScene(x, w, h, st, k);
+      paintScene(x, w, h, st, k + s);
       const blob = await toBlob(c, 'image/jpeg', 0.85);
       const thumb = await resizeTo(c, 520, 0.8);
-      const p = { id: uid(), tripId: S.trip.id, name: `demo-${s}-${k}.jpg`, blob, thumb: thumb.blob, w, h, time: base + s * 864e5 + k * 38 * 60e3 + (s > 2 ? 3600e3 : 0), exifTime: true, lat: st.lat + (Math.random() - .5) * 0.03, lon: st.lon + (Math.random() - .5) * 0.03 };
+      const j = () => (Math.random() - .5) * 0.02;
+      const p = { id: uid(), tripId: S.trip.id, name: `sample-${s}-${k}.jpg`, blob, thumb: thumb.blob, w, h, time: parseYmd(key) + (8.5 + k * 1.4) * 3600e3, exifTime: true, day: key, lat: st.lat != null ? st.lat + j() : null, lon: st.lon != null ? st.lon + j() : null };
       await DB.put('photos', p); S.photos.set(p.id, p);
       pg.set(++made / total);
     }
@@ -1136,22 +1253,61 @@ async function demoTrip() {
   S.tab = 'timeline'; render();
   if (window.Story) Story.offer(made);
 }
+async function demoTrip() { return sampleTrip(TEMPLATES[0]); }
+async function genTemplateForm() {
+  const m = modal(`<h2>✨ Generate a trip plan</h2>
+    <form id="genF"><div class="field"><label>Destination</label><input name="dest" required placeholder="e.g. Tokyo, Paris, Penang, Salzburg"></div>
+    <div class="two"><div class="field"><label>Days</label><input name="n" type="number" min="1" max="30" value="5"></div>
+    <div class="field"><label>Trip type</label><select name="type">${TRIP_TYPES.map(x => `<option>${x}</option>`).join('')}</select></div></div>
+    <div class="row" style="justify-content:flex-end"><button type="button" class="btn line" data-a="no">Cancel</button><button class="btn primary">Generate</button></div></form>`);
+  const f = $('#genF', m.el); setTimeout(() => f.elements.dest.focus(), 50);
+  f.addEventListener('submit', e => { e.preventDefault(); const E = f.elements; if (!E.dest.value.trim()) return; m.close(); showTemplate(generateTemplate(E.dest.value.trim(), +E.n.value || 5, E.type.value)); });
+  m.el.addEventListener('click', e => { if (e.target.dataset.a === 'no' || e.target === m.el) m.close(); });
+}
 function paintScene(x, w, h, st, k) {
   const r = (a, b) => a + Math.random() * (b - a);
-  const g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, st.sky[0]); g.addColorStop(1, st.sky[1]);
+  const SKY = { city: ['#ffb37a', '#ffe1c2'], towers: ['#7ec8ff', '#d8f0ff'], hills: ['#cfe8d5', '#f2f7f0'], beach: ['#5ec4e0', '#c2f0ff'], mountain: ['#8fb8ef', '#e6f0ff'], lake: ['#9fd3f5', '#eaf6ff'], temple: ['#ffd1dc', '#fff0e8'], mosque: ['#f6d79a', '#fff4dc'], garden: ['#bfe3a8', '#f4fbe9'], castle: ['#a9c8f2', '#edf4ff'], balloon: ['#ffb38a', '#ffe7c7'] };
+  const kind = st.kind || 'city', sky = SKY[kind] || SKY.city, evening = k % 5 === 4;
+  const g = x.createLinearGradient(0, 0, 0, h); g.addColorStop(0, evening ? '#3d3a6b' : sky[0]); g.addColorStop(1, evening ? '#ff9a6a' : sky[1]);
   x.fillStyle = g; x.fillRect(0, 0, w, h);
-  x.fillStyle = 'rgba(255,255,255,.85)'; x.beginPath(); x.arc(r(.15, .85) * w, r(.12, .3) * h, r(30, 70), 0, 7); x.fill();
-  const gy = h * r(.58, .72);
-  if (st.kind === 'hills') {
-    for (let l = 0; l < 4; l++) { x.fillStyle = `rgba(${40 + l * 15},${110 + l * 20},${60 + l * 10},${.55 + l * .12})`; x.beginPath(); x.moveTo(0, h); for (let i = 0; i <= 10; i++) x.lineTo(i / 10 * w, gy - l * -40 - Math.sin(i * .9 + k + l) * 60 - 60); x.lineTo(w, h); x.fill(); }
-  } else if (st.kind === 'beach') {
-    x.fillStyle = '#1aa3c9'; x.fillRect(0, gy - 60, w, 140); x.fillStyle = st.ground; x.fillRect(0, gy + 60, w, h);
+  x.fillStyle = evening ? 'rgba(255,230,180,.9)' : 'rgba(255,255,255,.85)'; x.beginPath(); x.arc(r(.15, .85) * w, r(.12, .3) * h, r(30, 70), 0, 7); x.fill();
+  const gy = h * r(.6, .72);
+  const hills = (cols, base) => cols.forEach((col, l) => { x.fillStyle = col; x.beginPath(); x.moveTo(0, h); for (let i = 0; i <= 12; i++) x.lineTo(i / 12 * w, base + l * 45 - Math.sin(i * .8 + k + l * 2) * 50 - 40); x.lineTo(w, h); x.fill(); });
+  if (kind === 'hills' || kind === 'garden') {
+    hills(['#6fae7c', '#4f9a5f', '#3e7d4d'], gy - 80);
+    if (kind === 'garden') for (let i = 0; i < 30; i++) { x.fillStyle = ['#ff6f91', '#ffd166', '#f78c6b', '#ffffff'][i % 4]; x.beginPath(); x.arc(r(0, w), r(gy + 40, h), r(6, 14), 0, 7); x.fill(); }
+  } else if (kind === 'mountain') {
+    for (let l = 0; l < 2; l++) { x.fillStyle = l ? '#5a6f8f' : '#7f93b3'; x.beginPath(); x.moveTo(0, h); const pk = r(.3, .7) * w; x.lineTo(pk - w * .5, gy + 40); x.lineTo(pk, gy - 330 + l * 90); x.lineTo(pk + w * .5, gy + 40); x.lineTo(w, h); x.fill(); x.fillStyle = '#fff'; x.beginPath(); x.moveTo(pk - 70, gy - 330 + l * 90 + 90); x.lineTo(pk, gy - 330 + l * 90); x.lineTo(pk + 70, gy - 330 + l * 90 + 90); x.fill(); }
+    x.fillStyle = '#3e6b4a'; x.fillRect(0, gy + 40, w, h);
+  } else if (kind === 'lake') {
+    hills(['#5f7f6a', '#4a6b57'], gy - 120);
+    x.fillStyle = '#4fa3c7'; x.fillRect(0, gy, w, h); x.fillStyle = 'rgba(255,255,255,.35)'; for (let i = 0; i < 12; i++) x.fillRect(r(0, w), r(gy + 10, h), r(40, 120), 3);
+    for (let i = 0; i < 6; i++) { const bx = w * .15 + i * 70, bh = r(50, 90); x.fillStyle = ['#f2e3c6', '#e9b44c', '#d96c4f'][i % 3]; x.fillRect(bx, gy - bh, 55, bh); x.fillStyle = '#7a3b2e'; x.beginPath(); x.moveTo(bx - 6, gy - bh); x.lineTo(bx + 27, gy - bh - 30); x.lineTo(bx + 61, gy - bh); x.fill(); }
+  } else if (kind === 'beach') {
+    x.fillStyle = '#1aa3c9'; x.fillRect(0, gy - 60, w, 140); x.fillStyle = '#e9d4a3'; x.fillRect(0, gy + 60, w, h);
     x.strokeStyle = '#2f5d34'; x.lineWidth = 12; const px = r(.2, .8) * w; x.beginPath(); x.moveTo(px, gy + 120); x.quadraticCurveTo(px + 30, gy - 80, px + 10, gy - 200); x.stroke();
     x.fillStyle = '#3f8a46'; for (let i = 0; i < 6; i++) { x.beginPath(); x.ellipse(px + 10, gy - 200, 110, 22, i * .55, 0, 7); x.fill(); }
-  } else if (st.kind === 'towers') {
-    x.fillStyle = st.ground; for (let i = 0; i < 14; i++) { const bw = r(50, 110), bh = r(120, 320); x.fillRect(i / 14 * w, gy - bh, bw, bh + h); }
+  } else if (kind === 'towers') {
+    x.fillStyle = '#40525c'; for (let i = 0; i < 14; i++) { const bw = r(50, 110), bh = r(120, 320); x.fillRect(i / 14 * w, gy - bh, bw, bh + h); }
     x.fillStyle = '#c9d3da'; [.42, .55].forEach(f => { x.fillRect(f * w, gy - 520, 46, 520); x.beginPath(); x.moveTo(f * w, gy - 520); x.lineTo(f * w + 23, gy - 600); x.lineTo(f * w + 46, gy - 520); x.fill(); });
-    x.fillRect(.42 * w + 46, gy - 330, .13 * w - 46, 14);
+  } else if (kind === 'temple') {
+    hills(['#8bb08a'], gy - 40);
+    const cx = r(.35, .65) * w; x.fillStyle = '#b8323a';
+    for (let l = 0; l < 4; l++) { const yy = gy - 60 - l * 90, ww = 260 - l * 40; x.fillRect(cx - ww / 2 + 30, yy - 50, ww - 60, 50); x.beginPath(); x.moveTo(cx - ww / 2 - 20, yy - 50); x.lineTo(cx, yy - 95); x.lineTo(cx + ww / 2 + 20, yy - 50); x.fill(); }
+    x.fillStyle = '#d9473f'; x.fillRect(w * .08, gy - 150, 18, 160); x.fillRect(w * .08 + 120, gy - 150, 18, 160); x.fillRect(w * .08 - 20, gy - 160, 180, 18);
+  } else if (kind === 'mosque') {
+    x.fillStyle = '#efe4cc'; x.fillRect(0, gy - 40, w, h);
+    const cx = r(.4, .6) * w; x.fillStyle = '#f7f1e3'; x.fillRect(cx - 200, gy - 160, 400, 160);
+    x.beginPath(); x.arc(cx, gy - 160, 110, Math.PI, 0); x.fill(); x.fillStyle = '#4e8a6e'; x.beginPath(); x.arc(cx, gy - 168, 100, Math.PI, 0); x.fill();
+    [cx - 300, cx + 280].forEach(mx => { x.fillStyle = '#f7f1e3'; x.fillRect(mx, gy - 420, 26, 420); x.fillStyle = '#4e8a6e'; x.beginPath(); x.moveTo(mx - 4, gy - 420); x.lineTo(mx + 13, gy - 480); x.lineTo(mx + 30, gy - 420); x.fill(); });
+    x.fillStyle = 'rgba(0,0,0,.18)'; for (let i = 0; i < 6; i++) { x.beginPath(); x.arc(cx - 150 + i * 60, gy - 60, 18, Math.PI, 0); x.fill(); x.fillRect(cx - 168 + i * 60, gy - 60, 36, 50); }
+  } else if (kind === 'castle') {
+    hills(['#6c9a6e', '#557f58'], gy - 60);
+    const cx = r(.35, .6) * w; x.fillStyle = '#e8e2d4'; x.fillRect(cx - 180, gy - 300, 360, 140);
+    for (let i = 0; i < 9; i++) x.fillRect(cx - 180 + i * 42, gy - 320, 24, 24); x.fillRect(cx + 100, gy - 400, 70, 240); x.fillStyle = '#b54a3a'; x.beginPath(); x.moveTo(cx + 92, gy - 400); x.lineTo(cx + 135, gy - 470); x.lineTo(cx + 178, gy - 400); x.fill();
+  } else if (kind === 'balloon') {
+    hills(['#d89a6a', '#c27f52'], gy - 40);
+    for (let i = 0; i < 7; i++) { const bx = r(.05, .95) * w, by = r(.12, .55) * h, s = r(.4, 1); x.fillStyle = ['#e63946', '#ffb703', '#219ebc', '#8ac926', '#ff6f91'][i % 5]; x.beginPath(); x.ellipse(bx, by, 50 * s, 62 * s, 0, 0, 7); x.fill(); x.fillStyle = '#6b4226'; x.fillRect(bx - 10 * s, by + 72 * s, 20 * s, 16 * s); }
   } else {
     for (let i = 0; i < 9; i++) { const bw = r(90, 160), bh = r(90, 220), bx = i / 9 * w; x.fillStyle = ['#d96c4f', '#e9b44c', '#f2e3c6', '#b8553f'][i % 4]; x.fillRect(bx, gy - bh, bw, bh + h); x.fillStyle = 'rgba(0,0,0,.18)'; for (let wy = gy - bh + 20; wy < gy - 20; wy += 40) for (let wx = bx + 14; wx < bx + bw - 20; wx += 34) x.fillRect(wx, wy, 16, 22); }
   }
@@ -1160,6 +1316,8 @@ function paintScene(x, w, h, st, k) {
 
 /* ---------------- Events ---------------- */
 document.addEventListener('click', async e => {
+  const tplEl = e.target.closest('[data-tpl]');
+  if (tplEl) { showTemplate(TEMPLATES.find(x => x.id === tplEl.dataset.tpl)); return; }
   const el = e.target.closest('[data-act],[data-tab],[data-open],[data-set],[data-page],[data-layout]');
   if (!el) return;
   if (el.dataset.tab) { S.tab = el.dataset.tab; S.sel = null; render(); window.scrollTo(0, 0); return; }
@@ -1210,6 +1368,8 @@ document.addEventListener('click', async e => {
       break;
     }
     case 'demo': demoTrip(); break;
+    case 'templates': document.querySelector('.tpl-grid').scrollIntoView({ behavior: 'smooth', block: 'center' }); break;
+    case 'tpl-gen': genTemplateForm(); break;
     case 'add-photos': if (t && t.uploadMode === 'daily' && tripDays(t).length) pickDayThenUpload(); else { pendingDay = null; $('#fileIn').click(); } break;
     case 'story': storyMode(); break;
     case 'cover': { t.coverId = el.closest('[data-pid]').dataset.pid; t.pages = null; saveTrip(); render(); toast('Cover photo set'); break; }
