@@ -45,8 +45,36 @@ h2{font-size:20px;margin:0 0 4px}
 .trip-card:hover{transform:translateY(-2px)}
 .trip-card .cv{aspect-ratio:4/3;background:linear-gradient(135deg,#127083,#0A3A47);background-size:cover;background-position:center;position:relative}
 .trip-card .cv .badge{position:absolute;left:10px;bottom:10px;background:rgba(0,0,0,.55);color:#fff;font-size:12px;padding:4px 9px;border-radius:999px}
-.trip-card .meta{padding:12px 14px}
+.trip-card .meta{padding:12px 10px 12px 14px;display:flex;align-items:center;gap:8px}
+.trip-card .meta>div:first-child{flex:1;min-width:0}
+.trip-card .meta b{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.card-acts{display:flex;gap:4px;flex:0 0 auto}
+.ib2{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:16px;color:var(--muted);background:#f3efe8}
+.ib2:hover{background:#e8e2d7;color:var(--ink)}
+.trip-acts{gap:8px}
+.icon-btn{width:40px;height:40px;padding:0;justify-content:center;font-size:17px}
+.icon-btn.danger:hover{border-color:#c4472a}
+.about-owner{display:inline-flex;flex-direction:column;align-items:center;gap:2px;background:#f3efe8;border-radius:14px;padding:10px 26px}
+.about-owner b{font-size:20px;color:var(--teal-d)}
+.about-btn{width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.12);color:#fff;font-weight:700;font-family:Georgia,serif;font-size:17px;display:flex;align-items:center;justify-content:center}
+.about-btn:hover{background:rgba(255,255,255,.22)}
+/* story player */
+.story{position:fixed;inset:0;z-index:150;background:#05161b;display:flex;flex-direction:column;color:#fff}
+.story canvas{flex:1;min-height:0;width:100%;object-fit:contain;display:block}
+.story .bar2{height:4px;background:rgba(255,255,255,.15)}
+.story .bar2 i{display:block;height:100%;width:0;background:var(--coral)}
+.story .ctrls{display:flex;align-items:center;gap:8px;padding:10px 14px calc(10px + env(safe-area-inset-bottom));flex-wrap:wrap;background:#081f26}
+.story .ctrls select{background:#12343e;border:1px solid #275663;color:#fff;border-radius:999px;padding:8px 12px}
+.story .ctrls .grow{flex:1}
+.story .x{position:absolute;top:calc(env(safe-area-inset-top) + 10px);right:12px;width:42px;height:42px;border-radius:50%;background:rgba(0,0,0,.45);color:#fff;font-size:20px;z-index:2}
+.story .rec{position:absolute;top:calc(env(safe-area-inset-top) + 14px);left:14px;background:#d33;color:#fff;font-size:13px;font-weight:700;padding:5px 12px;border-radius:999px;z-index:2}
+.offer-music{display:grid;grid-template-columns:repeat(2,1fr);gap:8px;margin:12px 0}
+.offer-music button{border:1.5px solid var(--line);border-radius:12px;padding:10px;text-align:left;background:#fff}
+.offer-music button.on{border-color:var(--coral);background:#fff6f2}
+.offer-music button b{display:block}
+.offer-music button small{color:var(--muted)}
 .trip-card .meta b{display:block;font-size:16px;margin-bottom:2px}
+@media (max-width:860px){.trip-acts .btn.primary{flex:1;justify-content:center}}
 .new-card{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;min-height:240px;border:2px dashed #cfc7b9;border-radius:var(--r);color:var(--teal);font-weight:600;cursor:pointer;background:transparent}
 .new-card:hover{border-color:var(--teal);background:#fff}
 .new-card .plus{font-size:34px;line-height:1}
@@ -56,7 +84,7 @@ h2{font-size:20px;margin:0 0 4px}
 .tabs{display:flex;gap:4px;background:#fff;border-radius:999px;padding:4px;box-shadow:var(--shadow);width:max-content;max-width:100%;overflow-x:auto;margin:16px 0 20px}
 .tabs button{padding:8px 18px;border-radius:999px;font-weight:600;font-size:14px;color:var(--muted);white-space:nowrap}
 .tabs button.on{background:var(--teal);color:#fff}
-.drop{border:2px dashed #cfc7b9;border-radius:18px;padding:40px 20px;text-align:center;background:#fff;color:var(--muted)}
+.drop{display:block;cursor:pointer;border:2px dashed #cfc7b9;border-radius:18px;padding:40px 20px;text-align:center;background:#fff;color:var(--muted)}
 .drop.over{border-color:var(--coral);background:#fff6f2}
 .drop svg{width:56px;height:56px;color:var(--teal)}
 .drop b{display:block;color:var(--ink);font-size:18px;margin:8px 0 4px}
@@ -146,11 +174,14 @@ h2{font-size:20px;margin:0 0 4px}
     <span class="crumb" id="crumb"></span>
     <div class="spacer"></div>
     <div id="topActions" class="row"></div>
+    <button class="about-btn" data-act="about" title="About MeyJournal" aria-label="About MeyJournal">i</button>
   </header>
   <main id="main"></main>
 </div>
 <input type="file" id="fileIn" accept="image/*" multiple class="hide">
+<input type="file" id="musicIn" accept="audio/*" class="hide">
 <script src="pdf-lib.min.js"></script>
 <script src="app.js"></script>
+<script src="story.js"></script>
 </body>
 </html>

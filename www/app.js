@@ -56,11 +56,12 @@ const Platform = {
 const DB = (() => {
   let dbp;
   const open = () => dbp || (dbp = new Promise((res, rej) => {
-    const r = indexedDB.open('meyjournal', 1);
+    const r = indexedDB.open('meyjournal', 2);
     r.onupgradeneeded = () => {
       const d = r.result;
-      d.createObjectStore('trips', { keyPath: 'id' });
-      d.createObjectStore('photos', { keyPath: 'id' }).createIndex('trip', 'tripId');
+      if (!d.objectStoreNames.contains('trips')) d.createObjectStore('trips', { keyPath: 'id' });
+      if (!d.objectStoreNames.contains('photos')) d.createObjectStore('photos', { keyPath: 'id' }).createIndex('trip', 'tripId');
+      if (!d.objectStoreNames.contains('music')) d.createObjectStore('music', { keyPath: 'tripId' });
     };
     r.onsuccess = () => res(r.result); r.onerror = () => rej(r.error);
   }));
@@ -83,6 +84,7 @@ const DB = (() => {
       const ps = await DB.photosOf(id);
       await tx('photos', 'readwrite', st => { ps.forEach(p => st.delete(p.id)); });
       await DB.del('trips', id);
+      try { await DB.del('music', id); } catch (e) { }
     }
   };
 })();
@@ -307,7 +309,7 @@ const COVERS = {
 const THEMES = {
   classic: { label: 'Classic', bg: '#FBF8F3', ink: '#2B2622', muted: '#857a70', accent: '#C0573E', font: 'Georgia, "DejaVu Serif", "Times New Roman", serif', head: 'Georgia, "DejaVu Serif", serif', map: '#EFE8DC' },
   minimal: { label: 'Minimal', bg: '#FFFFFF', ink: '#1D1D1F', muted: '#8a8f94', accent: '#0E5E6F', font: '"Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif', head: '"Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif', map: '#EEF3F4' },
-  bold: { label: 'Night', bg: '#0F2D36', ink: '#F4EFE6', muted: '#9fb3b8', accent: '#FF8A65', font: '"Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif', head: '"Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif', map: '#163C47' }
+  bold: { label: 'Night', start: '#127083', bg: '#0F2D36', ink: '#F4EFE6', muted: '#9fb3b8', accent: '#FF8A65', font: '"Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif', head: '"Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif', map: '#163C47' }
 };
 function pickLayout(ids, size) {
   const ps = ids.map(id => S.photos.get(id)).filter(Boolean);
@@ -429,7 +431,7 @@ function drawRouteMap(ctx, x, y, w, h, trip, T, u) {
   pts.forEach((p, i) => {
     const [px, py] = marks[i];
     ctx.fillStyle = '#fff'; ctx.beginPath(); ctx.arc(px, py, r + 3 * u, 0, 7); ctx.fill();
-    ctx.fillStyle = i === 0 ? T.ink : T.accent; ctx.beginPath(); ctx.arc(px, py, r, 0, 7); ctx.fill();
+    ctx.fillStyle = i === 0 ? (T.start || T.ink) : T.accent; ctx.beginPath(); ctx.arc(px, py, r, 0, 7); ctx.fill();
     ctx.fillStyle = '#fff'; ctx.font = `bold ${11 * u}px ${T.font}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
     ctx.fillText(String(p.n), px, py + 0.5 * u); ctx.textBaseline = 'alphabetic'; ctx.textAlign = 'left';
   });
@@ -481,7 +483,7 @@ function renderPage(ctx, W, H, page, trip, img, pageNo) {
       ctx.fillStyle = '#fff';
       ctx.font = `bold ${46 * u}px ${T.head}`;
       const lines = wrap(ctx, trip.title || 'Our Trip', W - 2 * m).slice(0, 3);
-      const sub = trip.subtitle || '';
+      const sub = subOf(trip);
       let yy = H - m - (sub ? 34 * u : 0) - (lines.length - 1) * 52 * u;
       lines.forEach((l, i) => ctx.fillText(l, m, yy + i * 52 * u));
       if (sub) { ctx.font = `${17 * u}px ${T.font}`; ctx.globalAlpha = .9; ctx.fillText(sub, m, H - m); ctx.globalAlpha = 1; }
@@ -602,12 +604,14 @@ let saveTimer;
 function saveTrip(now) {
   if (!S.trip) return;
   S.trip.updatedAt = Date.now();
+  S.trip.autoSub = defaultSubtitle(S.trip); S.trip.count = S.photos.size;
   clearTimeout(saveTimer);
   const t = S.trip;
   const go = () => DB.put('trips', JSON.parse(JSON.stringify(t))).catch(e => toast('Could not save: ' + e.message));
   if (now) return go();
   saveTimer = setTimeout(go, 400);
 }
+function subOf(trip) { return trip.subtitleEdited && trip.subtitle ? trip.subtitle : (S.trip && S.trip.id === trip.id ? defaultSubtitle(trip) : (trip.autoSub || '')); }
 function defaultSubtitle(trip) {
   const st = tripStats(trip);
   if (!st.start) return '';
@@ -673,7 +677,12 @@ function render() {
   const tabs = [['timeline', 'Timeline'], ['map', 'Map'], ['book', 'Photo book'], ['settings', 'Trip']];
   main.innerHTML = `
     <div class="row" style="justify-content:space-between;align-items:flex-end">
-      <div><h1>${esc(t.title || 'Untitled trip')}</h1><div class="sub">${esc(t.subtitle || defaultSubtitle(t) || 'No photos yet')} · ${S.photos.size} photo${S.photos.size === 1 ? '' : 's'}</div></div>
+      <div><h1>${esc(t.title || 'Untitled trip')}</h1><div class="sub">${S.photos.size ? esc(subOf(t)) + ' · ' : ''}${S.photos.size} photo${S.photos.size === 1 ? '' : 's'}</div></div>
+      <div class="row trip-acts">
+        ${S.photos.size ? `<button class="btn primary" data-act="play">▶ Play story</button>` : ''}
+        <button class="btn line icon-btn" data-act="rename-trip" title="Rename trip" aria-label="Rename trip">✎</button>
+        <button class="btn line icon-btn danger" data-act="del-trip" title="Delete trip" aria-label="Delete trip">🗑</button>
+      </div>
     </div>
     <div class="tabs">${tabs.map(([k, l]) => `<button data-tab="${k}" class="${S.tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
     <div id="tabBody"></div>`;
@@ -688,7 +697,8 @@ function homeView() {
   const cards = S.trips.map(t => `
     <div class="trip-card" data-open="${t.id}">
       <div class="cv" data-cover="${t.id}"><span class="badge">${t.count || 0} photos</span></div>
-      <div class="meta"><b>${esc(t.title || 'Untitled trip')}</b><span class="sub">${esc(t.subtitle || '')}</span></div>
+      <div class="meta"><div><b>${esc(t.title || 'Untitled trip')}</b><span class="sub">${esc(t.count ? subOf(t) : 'No photos yet')}</span></div>
+        <div class="card-acts"><button class="ib2" data-act="rename-trip" data-id="${t.id}" title="Rename" aria-label="Rename trip">✎</button><button class="ib2" data-act="del-trip" data-id="${t.id}" title="Delete" aria-label="Delete trip">🗑</button></div></div>
     </div>`).join('');
   queueMicrotask(loadCardCovers);
   return `
@@ -835,7 +845,7 @@ function renderEditor() {
   if (!page) { box.innerHTML = '<div class="sub">Tap a page to edit its layout and caption.</div>'; return; }
   const names = { cover: 'Cover', map: 'Route map', chapter: 'Chapter opener', photos: 'Photo page', notes: 'Notes page', end: 'Back page' };
   let html = `<h3>${names[page.type]}${page.type === 'photos' ? ' · page ' + pi : ''}</h3>`;
-  if (page.type === 'cover') html += `<div class="field"><label>Title</label><input data-trip="title" value="${esc(t.title)}"></div><div class="field"><label>Subtitle</label><input data-trip="subtitle" value="${esc(t.subtitle)}"></div><div class="sub">Pick the cover photo with ★ in the Timeline.</div>`;
+  if (page.type === 'cover') html += `<div class="field"><label>Title</label><input data-trip="title" value="${esc(t.title)}"></div><div class="field"><label>Subtitle</label><input data-trip="subtitle" value="${esc(subOf(t))}"></div><div class="sub">Pick the cover photo with ★ in the Timeline.</div>`;
   if (page.type === 'chapter') { const ch = t.chapters.find(c => c.id === page.chapterId); if (ch) html += `<div class="field"><label>Stop title</label><input data-ch-f="title" value="${esc(ch.title)}"></div><div class="field"><label>Story</label><textarea data-ch-f="caption" rows="5">${esc(ch.caption)}</textarea></div>`; }
   if (page.type === 'photos') {
     const opts = layoutsFor(page.photoIds.length);
@@ -851,15 +861,28 @@ function settingsView() {
   const t = S.trip;
   return `<div class="panel" style="max-width:560px">
     <div class="field"><label>Trip name</label><input data-trip="title" value="${esc(t.title)}"></div>
-    <div class="field"><label>Subtitle (shown on cover)</label><input data-trip="subtitle" value="${esc(t.subtitle)}" placeholder="${esc(defaultSubtitle(t))}"></div>
+    <div class="field"><label>Subtitle (shown on cover)</label><input data-trip="subtitle" value="${esc(t.subtitleEdited ? t.subtitle : '')}" placeholder="${esc(defaultSubtitle(t) || 'Dates are filled in automatically')}"></div>
+    <label class="row" style="margin:4px 0 14px;gap:8px;cursor:pointer"><input type="checkbox" data-toggle="autoStory" ${t.autoStory !== false ? 'checked' : ''}> Auto-write story & offer music when adding photos</label>
     <div class="row" style="margin-top:8px"><button class="btn line" data-act="regroup">Re-group timeline from photos</button><button class="btn line" data-act="del-trip" style="color:#b3361b">Delete trip</button></div>
     <p class="sub" style="margin-top:16px;line-height:1.5">Photos are stored only on this device. Re-grouping rebuilds stops from photo dates & GPS and keeps titles/captions you've edited where it can.</p>
   </div>`;
 }
 
+const APP_VERSION = '1.1.0';
+function showAbout() {
+  const logo = $('#homeBtn svg').outerHTML.replace('<svg', '<svg style="width:72px;height:72px"');
+  const m = modal(`<div style="text-align:center">${logo}
+    <h2 style="margin:10px 0 2px">MeyJournal</h2><div class="sub">Version ${APP_VERSION}</div>
+    <p style="line-height:1.55;margin:14px 0">Turn your trip photos into a story with music, a route map and a print-ready photo book.</p>
+    <div class="about-owner"><span class="sub">Created & owned by</span><b>Kamil</b></div>
+    <p class="sub" style="line-height:1.5;margin-top:14px">Your photos stay on this device — nothing is uploaded.<br>© ${new Date().getFullYear()} Kamil. All rights reserved.</p>
+    <button class="btn primary" data-a="ok" style="margin-top:6px">Close</button></div>`);
+  m.el.addEventListener('click', e => { if (e.target.dataset.a || e.target === m.el) m.close(); });
+}
+
 /* ---------------- Actions ---------------- */
 async function newTrip(title, opts = {}) {
-  const t = { id: uid(), title: title || 'My trip', subtitle: '', createdAt: Date.now(), updatedAt: Date.now(), chapters: [], pages: null, cover: 'hardcover', size: 'square', theme: 'classic', coverId: null, count: 0, ...opts };
+  const t = { id: uid(), title: title || 'My trip', subtitle: '', createdAt: Date.now(), updatedAt: Date.now(), chapters: [], pages: null, cover: 'hardcover', size: 'square', theme: 'classic', coverId: null, count: 0, music: 'calm', autoStory: true, ...opts };
   await DB.put('trips', t);
   await openTrip(t.id);
 }
@@ -883,27 +906,31 @@ async function importFiles(fileList) {
     }
   };
   await Promise.all([worker(), worker(), worker()]);
-  pg.set(1, 'Building your timeline…'); await sleep(150);
+  pg.set(1, 'Writing your story…'); await sleep(150);
   regroup();
+  if (S.trip.autoStory !== false) autoCaptions();
+  saveTrip(true);
   pg.close();
-  if (failed) toast(`${failed} file${failed > 1 ? 's' : ''} couldn't be read (HEIC/RAW? export as JPEG)`);
-  else toast(`Added ${done - failed} photos`);
   render();
+  if (failed) toast(`${failed} file${failed > 1 ? 's' : ''} couldn't be read (HEIC/RAW? export as JPEG)`);
+  if (done - failed > 0 && S.trip.autoStory !== false && window.Story) Story.offer(done - failed);
 }
 function regroup() {
   const t = S.trip;
   t.chapters = autoGroup([...S.photos.values()], t.chapters);
   if (!t.coverId || !S.photos.has(t.coverId)) t.coverId = t.chapters[0]?.photoIds[0] || null;
-  if (!t.subtitle) t.subtitle = defaultSubtitle(t);
   t.count = S.photos.size; t.pages = null;
   saveTrip(true);
 }
 function storyMode() {
   const t = S.trip, n = t.chapters.length;
   t.chapters.forEach((ch, i) => { if (!ch.edited || !ch.caption) ch.caption = storyCaption(ch, i, n); });
-  if (!t.subtitle) t.subtitle = defaultSubtitle(t);
   saveTrip(); toast('Draft captions written — edit any of them');
   render();
+}
+function autoCaptions() {
+  const t = S.trip, n = t.chapters.length;
+  t.chapters.forEach((ch, i) => { if (!ch.edited) ch.caption = storyCaption(ch, i, n); });
 }
 async function exportPDF() {
   if (!window.PDFLib) { toast('PDF engine missing'); return; }
@@ -961,10 +988,10 @@ async function demoTrip() {
       pg.set(++made / total);
     }
   }
-  regroup();
-  storyMode();
+  regroup(); autoCaptions(); saveTrip(true);
   pg.close();
   S.tab = 'timeline'; render();
+  if (window.Story) Story.offer(made);
 }
 function paintScene(x, w, h, st, k) {
   const r = (a, b) => a + Math.random() * (b - a);
@@ -1042,13 +1069,29 @@ document.addEventListener('click', async e => {
     }
     case 'del-page': if (page) { t.pages.splice(pi, 1); S.sel = null; saveTrip(); render(); } break;
     case 'regroup': regroup(); render(); toast('Timeline re-grouped'); break;
-    case 'del-trip': if (await confirmBox('Delete this trip?', 'All its photos and the photo book will be removed from this device.')) { await DB.deleteTrip(t.id); S.trip = null; await loadTrips(); render(); } break;
+    case 'del-trip': {
+      const id = el.dataset.id || (t && t.id); const tr = S.trips.find(x => x.id === id) || t;
+      if (await confirmBox(`Delete “${(tr && tr.title) || 'this trip'}”?`, 'All its photos, story and photo book will be removed from this device. This can’t be undone.')) {
+        await DB.deleteTrip(id); if (S.trip && S.trip.id === id) S.trip = null; await loadTrips(); render(); toast('Trip deleted');
+      }
+      break;
+    }
+    case 'rename-trip': {
+      const id = el.dataset.id || (t && t.id);
+      const tr = (S.trip && S.trip.id === id) ? S.trip : await DB.get('trips', id);
+      const name = await ask('Rename trip', 'Trip name', tr.title || '', 'Save');
+      if (name) { tr.title = name; tr.updatedAt = Date.now(); if (S.trip && S.trip.id === id) { saveTrip(true); } else { await DB.put('trips', tr); await loadTrips(); } render(); }
+      break;
+    }
+    case 'play': if (window.Story) Story.open(); break;
+    case 'about': showAbout(); break;
   }
 });
 document.addEventListener('input', e => {
   const el = e.target, t = S.trip; if (!t) return;
+  if (el.dataset.toggle) { t[el.dataset.toggle] = el.checked; saveTrip(); return; }
   if (el.dataset.f) { const ch = t.chapters.find(c => c.id === el.closest('[data-ch]').dataset.ch); ch[el.dataset.f] = el.value; ch.edited = true; saveTrip(); return; }
-  if (el.dataset.trip) { t[el.dataset.trip] = el.value; $('#crumb').textContent = '/ ' + (t.title || 'Untitled trip'); saveTrip(); const cov = t.pages && t.pages[0]; if (cov) redrawPage(cov.id); return; }
+  if (el.dataset.trip) { t[el.dataset.trip] = el.value; if (el.dataset.trip === 'subtitle') t.subtitleEdited = !!el.value.trim(); $('#crumb').textContent = '/ ' + (t.title || 'Untitled trip'); saveTrip(); const cov = t.pages && t.pages[0]; if (cov) redrawPage(cov.id); return; }
   if (el.dataset.chF) { const page = t.pages.find(p => p.id === S.sel), ch = t.chapters.find(c => c.id === page.chapterId); ch[el.dataset.chF] = el.value; ch.edited = true; saveTrip(); redrawPage(page.id); return; }
   if ('pageCap' in el.dataset) { const page = t.pages.find(p => p.id === S.sel); page.caption = el.value; saveTrip(); redrawPage(page.id); }
 });
@@ -1062,7 +1105,7 @@ window.addEventListener('drop', e => { if (S.trip && !e.target.closest('#drop'))
 // Android hardware back button
 try {
   const App = window.Capacitor && window.Capacitor.Plugins && window.Capacitor.Plugins.App;
-  if (App) App.addListener('backButton', () => { if (document.querySelector('.modal-bg')) document.querySelector('.modal-bg').remove(); else if (S.trip) goHome(); else App.exitApp(); });
+  if (App) App.addListener('backButton', () => { if (window.Story && Story.isOpen()) Story.close(); else if (document.querySelector('.modal-bg')) document.querySelector('.modal-bg').remove(); else if (S.trip) goHome(); else App.exitApp(); });
 } catch (e) { }
 
 (async function init() {

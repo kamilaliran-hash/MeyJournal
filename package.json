@@ -1,9 +1,9 @@
 {
   "name": "meyjournal",
   "productName": "MeyJournal",
-  "version": "1.0.0",
-  "description": "MeyJournal — turn travel photos into a timeline, route map and print-ready photo book.",
-  "author": "MeyJournal",
+  "version": "1.1.0",
+  "description": "MeyJournal by Kamil \u2014 turn travel photos into a story with music, a route map and a print-ready photo book.",
+  "author": "Kamil",
   "license": "UNLICENSED",
   "main": "electron/main.js",
   "scripts": {
@@ -31,9 +31,16 @@
   "build": {
     "appId": "com.meyjournal.app",
     "productName": "MeyJournal",
-    "copyright": "© MeyJournal",
-    "directories": { "output": "dist", "buildResources": "build" },
-    "files": ["electron/**", "www/**", "package.json"],
+    "copyright": "\u00a9 2026 Kamil",
+    "directories": {
+      "output": "dist",
+      "buildResources": "build"
+    },
+    "files": [
+      "electron/**",
+      "www/**",
+      "package.json"
+    ],
     "win": {
       "icon": "build/icon.ico",
       "artifactName": "MeyJournal-${version}-${target}.${ext}"
@@ -47,6 +54,8 @@
       "uninstallerIcon": "build/icon.ico",
       "artifactName": "MeyJournal-Setup-${version}.${ext}"
     },
-    "portable": { "artifactName": "MeyJournal-Portable-${version}.${ext}" }
+    "portable": {
+      "artifactName": "MeyJournal-Portable-${version}.${ext}"
+    }
   }
 }

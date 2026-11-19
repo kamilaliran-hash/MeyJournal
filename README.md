@@ -5,6 +5,10 @@ One codebase builds both apps: **Android (APK)** with Capacitor and **Windows (E
 
 ## Features
 
+- **Auto story with music** — when you add photos, captions are written automatically and a “Your story is ready” screen lets you pick music (Calm, Upbeat, Adventure, Tropical — generated on-device, royalty-free) or your own song. The story plays as a full-screen slideshow with title, route map, stop cards and photos, and can be **saved as a video** (MP4/WebM).
+- **Manage trips** — rename ✎ or delete 🗑 any trip from its card on the home screen or from the trip page.
+- **About** — tap ⓘ in the top bar. MeyJournal is created and owned by **Kamil**.
+
 - **Import up to 1,200 photos per trip.** Photos are resized and stored on the device (IndexedDB), and nothing is uploaded.
 - **Automatic timeline.** MeyJournal reads the EXIF date and GPS of each photo, then groups the photos into stops by time gaps, day changes and distance. Each stop is named after the nearest town from a built-in offline list of about 250 places, weighted toward Malaysia and Southeast Asia.
 - **Route map.** Shows the numbered stops, the dotted route, and totals for days, km, stops and photos.
