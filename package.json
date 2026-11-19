@@ -1,0 +1,52 @@
+{
+  "name": "meyjournal",
+  "productName": "MeyJournal",
+  "version": "1.0.0",
+  "description": "MeyJournal — turn travel photos into a timeline, route map and print-ready photo book.",
+  "author": "MeyJournal",
+  "license": "UNLICENSED",
+  "main": "electron/main.js",
+  "scripts": {
+    "start": "electron .",
+    "web": "npx --yes http-server www -p 8080 -c-1",
+    "build:win": "electron-builder --win nsis portable --x64",
+    "android:init": "npx cap add android && npx capacitor-assets generate --android",
+    "android:sync": "npx cap sync android",
+    "build:apk": "npm run android:sync && cd android && ./gradlew assembleDebug",
+    "build:apk:win": "npm run android:sync && cd android && gradlew.bat assembleDebug"
+  },
+  "dependencies": {
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/app": "^7.0.0",
+    "@capacitor/core": "^7.0.0",
+    "@capacitor/filesystem": "^7.0.0",
+    "@capacitor/share": "^7.0.0"
+  },
+  "devDependencies": {
+    "@capacitor/assets": "^3.0.5",
+    "@capacitor/cli": "^7.0.0",
+    "electron": "^35.0.0",
+    "electron-builder": "^26.0.0"
+  },
+  "build": {
+    "appId": "com.meyjournal.app",
+    "productName": "MeyJournal",
+    "copyright": "© MeyJournal",
+    "directories": { "output": "dist", "buildResources": "build" },
+    "files": ["electron/**", "www/**", "package.json"],
+    "win": {
+      "icon": "build/icon.ico",
+      "artifactName": "MeyJournal-${version}-${target}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "shortcutName": "MeyJournal",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "artifactName": "MeyJournal-Setup-${version}.${ext}"
+    },
+    "portable": { "artifactName": "MeyJournal-Portable-${version}.${ext}" }
+  }
+}
