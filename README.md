@@ -5,6 +5,8 @@ One codebase builds both apps: **Android (APK)** with Capacitor and **Windows (E
 
 ## Features
 
+- **Trip details** — when you create a trip you set name, destination, dates (from → to), who you're travelling with, trip type and notes. Edit them any time with ✎.
+- **Two ways to add photos** — *Whole trip at once* (grouped by photo date & GPS) or *Day by day*: each day of the trip gets a card with “Add photos for day N”, a place and a caption. Photos land on the day you choose even when they have no date (common on Android/WhatsApp). Move a photo to another day with ⇄.
 - **Auto story with music** — when you add photos, captions are written automatically and a “Your story is ready” screen lets you pick music (Calm, Upbeat, Adventure, Tropical — generated on-device, royalty-free) or your own song. The story plays as a full-screen slideshow with title, route map, stop cards and photos, and can be **saved as a video** (MP4/WebM).
 - **Manage trips** — rename ✎ or delete 🗑 any trip from its card on the home screen or from the trip page.
 - **About** — tap ⓘ in the top bar. MeyJournal is created and owned by **Kamil**.

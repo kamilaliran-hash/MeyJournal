@@ -197,7 +197,7 @@ const Story = (() => {
       kenBurns(img, W, H, p, 4); shade(W, H, 0.3, 0.8);
       ctx.fillStyle = '#fff';
       ctx.globalAlpha = alpha * textIn(0.3); ctx.font = `bold ${15 * u}px ${font}`; ctx.fillStyle = '#FF8A65';
-      ctx.fillText('A TRAVEL STORY', m, H - m - 120 * u);
+      ctx.fillText(`A ${(S.trip.tripType || 'travel').toUpperCase()} STORY${S.trip.travellers ? ' · WITH ' + S.trip.travellers.toUpperCase() : ''}`, m, H - m - 120 * u);
       ctx.globalAlpha = alpha * textIn(0.6); ctx.fillStyle = '#fff'; ctx.font = `bold ${58 * u}px ${serif}`;
       const lines = wrap(ctx, S.trip.title || 'Our trip', W - 2 * m).slice(0, 2);
       lines.forEach((l, i) => ctx.fillText(l, m, H - m - 52 * u - (lines.length - 1 - i) * 62 * u));
@@ -233,6 +233,7 @@ const Story = (() => {
       const st = tripStats(S.trip);
       ctx.globalAlpha = alpha * textIn(0.8); ctx.font = `${18 * u}px ${font}`;
       ctx.fillText(`${st.photos} photos · ${st.places} stops${st.km ? ' · ' + st.km.toLocaleString() + ' km' : ''}`, W / 2, H / 2 + 44 * u);
+      if (S.trip.travellers) { ctx.font = `italic ${20 * u}px ${serif}`; ctx.fillText(`with ${S.trip.travellers}`, W / 2, H / 2 + 80 * u); }
       ctx.globalAlpha = alpha * textIn(1.4) * 0.8; ctx.font = `600 ${14 * u}px ${font}`; ctx.fillText('MeyJournal', W / 2, H - m);
       ctx.textAlign = 'left';
     }

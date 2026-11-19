@@ -35,7 +35,7 @@ header.top .crumb{opacity:.75;font-weight:500;font-size:15px;white-space:nowrap;
 .btn.teal{background:var(--teal);color:#fff}
 .btn.small{padding:6px 12px;font-size:13px}
 .btn[disabled]{opacity:.5;pointer-events:none}
-main{flex:1;width:100%;max-width:1240px;margin:0 auto;padding:22px 18px 80px}
+main{flex:1;width:100%;max-width:1240px;margin:0 auto;padding:22px 18px calc(120px + env(safe-area-inset-bottom))}
 h1{font-size:26px;margin:0 0 4px}
 h2{font-size:20px;margin:0 0 4px}
 .sub{color:var(--muted);font-size:14px}
@@ -58,6 +58,26 @@ h2{font-size:20px;margin:0 0 4px}
 .about-owner b{font-size:20px;color:var(--teal-d)}
 .about-btn{width:36px;height:36px;border-radius:50%;background:rgba(255,255,255,.12);color:#fff;font-weight:700;font-family:Georgia,serif;font-size:17px;display:flex;align-items:center;justify-content:center}
 .about-btn:hover{background:rgba(255,255,255,.22)}
+.hint{display:flex;gap:10px;align-items:center;flex-wrap:wrap;background:#fff6e5;border:1px solid #f3d9a4;border-radius:12px;padding:10px 14px;margin-bottom:16px;font-size:14px;line-height:1.45}
+.hint span{flex:1;min-width:220px}
+.trip-form .two{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.modal{max-height:calc(100vh - 40px);overflow:auto}
+.modal:has(.trip-form){max-width:520px}
+.mode-opts{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.mode{border:1.5px solid var(--line);border-radius:12px;padding:10px 12px;cursor:pointer;display:flex;flex-direction:column;gap:3px;background:#fff}
+.mode input{position:absolute;opacity:0;pointer-events:none}
+.mode.on{border-color:var(--coral);background:#fff6f2}
+.mode small{color:var(--muted);line-height:1.35}
+.info{display:grid;grid-template-columns:130px 1fr;gap:8px 12px;margin:12px 0 0}
+.info dt{color:var(--muted);font-size:13px;font-weight:600}
+.info dd{margin:0;white-space:pre-wrap}
+.day-pick{display:flex;flex-direction:column;gap:6px;max-height:55vh;overflow:auto}
+.day-pick button{display:grid;grid-template-columns:70px 1fr auto;gap:8px;align-items:center;text-align:left;border:1.5px solid var(--line);border-radius:10px;padding:10px 12px;background:#fff}
+.day-pick button:hover{border-color:var(--teal)}
+.day-pick small{color:var(--muted)}
+.day-card.empty .body{background:#fbfaf7;border:1.5px dashed #d9d1c3;box-shadow:none}
+.day-card.empty .dot{background:#c9bfb0}
+@media (max-width:520px){.trip-form .two,.mode-opts{grid-template-columns:1fr}.info{grid-template-columns:1fr}.info dt{margin-top:6px}}
 /* story player */
 .story{position:fixed;inset:0;z-index:150;background:#05161b;display:flex;flex-direction:column;color:#fff}
 .story canvas{flex:1;min-height:0;width:100%;object-fit:contain;display:block}

@@ -20,6 +20,27 @@ function fmtRange(a, b) {
   if (A.getFullYear() === B.getFullYear()) return `${A.getDate()} ${MONTHS[A.getMonth()]} – ${B.getDate()} ${MONTHS[B.getMonth()]} ${B.getFullYear()}`;
   return `${fmtDate(a)} – ${fmtDate(b)}`;
 }
+const DOW = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+const ymd = t => { const d = new Date(t); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; };
+const parseYmd = s => { const m = /^(\d{4})-(\d\d)-(\d\d)$/.exec(s || ''); return m ? new Date(+m[1], m[2] - 1, +m[3]).getTime() : null; };
+const fmtDay = k => { const t = parseYmd(k); const d = new Date(t); return `${DOW[d.getDay()]}, ${fmtDate(t)}`; };
+const TRIP_TYPES = ['Holiday', 'Family', 'Honeymoon', 'Friends', 'Solo', 'Business', 'Umrah', 'School trip', 'Road trip', 'Backpacking'];
+/** first day of the trip (for "Day n" numbering) */
+function tripT0(trip, photos) {
+  const s = parseYmd(trip.startDate);
+  const first = photos.length ? startOfDay(Math.min(...photos.map(p => p.time))) : null;
+  if (s != null && first != null) return Math.min(s, first);
+  return s != null ? s : first != null ? first : startOfDay(Date.now());
+}
+/** every day of the trip: the date range plus any day that has photos */
+function tripDays(trip) {
+  const set = new Set();
+  const a = parseYmd(trip.startDate), b = parseYmd(trip.endDate || trip.startDate);
+  if (a != null && b != null) for (let t = a, i = 0; t <= b && i < 120; i++) { set.add(ymd(t)); t = new Date(new Date(t).setDate(new Date(t).getDate() + 1)).getTime(); }
+  (trip.chapters || []).forEach(c => c.dayKey && set.add(c.dayKey));
+  return [...set].sort();
+}
+const dayNum = (trip, key) => Math.round((parseYmd(key) - tripT0(trip, [...S.photos.values()])) / 864e5) + 1;
 function km(a, b) {
   const R = 6371, r = Math.PI / 180;
   const dLat = (b.lat - a.lat) * r, dLon = (b.lon - a.lon) * r;
@@ -184,7 +205,7 @@ async function resizeTo(src, max, q) {
   x.imageSmoothingQuality = 'high'; x.drawImage(src, 0, 0, w, h);
   return { blob: await toBlob(c, 'image/jpeg', q), w, h };
 }
-async function processFile(file, tripId) {
+async function processFile(file, tripId, day, idx = 0) {
   const buf = await file.arrayBuffer();
   let meta = {};
   try { meta = readExif(buf); } catch (e) { meta = {}; }
@@ -194,9 +215,15 @@ async function processFile(file, tripId) {
   if (img.close) img.close();
   return {
     id: uid(), tripId, name: file.name, blob: full.blob, thumb: thumb.blob, w: full.w, h: full.h,
-    time: meta.time || file.lastModified || Date.now(), exifTime: !!meta.time,
+    time: day ? dayTime(day, meta.time, idx) : (meta.time || file.lastModified || Date.now()), exifTime: !!meta.time, day: day || null,
     lat: meta.lat ?? null, lon: meta.lon ?? null
   };
+}
+/** Put a photo on the chosen day: keep its EXIF time-of-day when it has one, else space them out from 9am in pick order. */
+function dayTime(day, exif, idx) {
+  const d0 = parseYmd(day);
+  if (exif) return d0 + (exif - startOfDay(exif));
+  return d0 + 9 * 3600e3 + idx * 60e3;
 }
 
 /* image caches */
@@ -216,7 +243,8 @@ function centroid(ps) {
   if (!g.length) return null;
   return { lat: g.reduce((a, p) => a + p.lat, 0) / g.length, lon: g.reduce((a, p) => a + p.lon, 0) / g.length };
 }
-function autoGroup(photos, oldChapters = []) {
+function autoGroup(photos, oldChapters = [], trip = S.trip || {}) {
+  const daily = trip.uploadMode === 'daily', days = trip.days || {};
   const ps = [...photos].sort((a, b) => a.time - b.time);
   const groups = []; let cur = null;
   for (const p of ps) {
@@ -226,7 +254,8 @@ function autoGroup(photos, oldChapters = []) {
     const c = centroid(cur);
     const dist = (c && p.lat != null) ? km(c, p) : 0;
     const dayChange = dayKey(p.time) !== dayKey(last.time);
-    if (gapH > 5 || dist > 30 || (dayChange && gapH > 2)) { groups.push(cur); cur = [p]; }
+    const brk = daily ? dayChange : (gapH > 5 || dist > 30 || (dayChange && gapH > 2));
+    if (brk) { groups.push(cur); cur = [p]; }
     else cur.push(p);
   }
   if (cur) groups.push(cur);
@@ -234,15 +263,15 @@ function autoGroup(photos, oldChapters = []) {
   const owner = new Map();
   oldChapters.forEach(ch => ch.photoIds.forEach(id => owner.set(id, ch)));
   const used = new Set();
-  const t0 = ps.length ? startOfDay(ps[0].time) : 0;
+  const t0 = tripT0(trip, ps);
   return groups.map(g => {
-    const c = centroid(g), pl = placeName(c);
-    const day = Math.floor((startOfDay(g[0].time) - t0) / 864e5) + 1;
+    const c = centroid(g), pl = placeName(c), key = ymd(g[0].time), dinfo = days[key] || {};
+    const day = Math.round((startOfDay(g[0].time) - t0) / 864e5) + 1;
     const ch = {
-      id: uid(), photoIds: g.map(p => p.id), start: g[0].time, end: g[g.length - 1].time, day,
+      id: uid(), photoIds: g.map(p => p.id), start: g[0].time, end: g[g.length - 1].time, day, dayKey: key,
       lat: c ? c.lat : null, lon: c ? c.lon : null,
-      place: pl ? pl.name : '', country: pl ? pl.country : '',
-      title: pl ? pl.name : `Day ${day}`, caption: '', edited: false
+      place: dinfo.place || (pl ? pl.name : '') || trip.destination || '', country: pl ? pl.country : '',
+      title: dinfo.place || (pl ? pl.name : '') || `Day ${day}`, caption: '', edited: false
     };
     // keep user edits from the previous grouping when chapters overlap
     const votes = new Map();
@@ -253,6 +282,7 @@ function autoGroup(photos, oldChapters = []) {
       if (best.edited) { ch.title = best.title; ch.caption = best.caption; ch.edited = true; }
       else if (best.caption) ch.caption = best.caption;
     }
+    if (daily) { if (dinfo.place) ch.title = dinfo.place; if (dinfo.caption) { ch.caption = dinfo.caption; ch.edited = true; } }
     return ch;
   });
 }
@@ -267,19 +297,34 @@ function recomputeChapter(ch) {
 /* ---------------- Story mode: auto captions ---------------- */
 function timeOfDay(t) { const h = new Date(t).getHours(); return h < 11 ? 'morning' : h < 15 ? 'afternoon' : h < 19 ? 'late afternoon' : 'evening'; }
 function storyCaption(ch, i, total) {
-  const n = ch.photoIds.length, place = ch.place && !/°/.test(ch.place) ? ch.place.replace(/^Near /, '') : 'the road';
+  const trip = S.trip || {};
+  const raw = (ch.place || '').replace(/^Near /, ''), place = raw && !/°/.test(raw) ? raw : (trip.destination || '');
+  const n = ch.photoIds.length, ph = (k, w = 'photo') => `${k} ${w}${k > 1 ? 's' : ''}`;
   const tod = timeOfDay(ch.start), dur = (ch.end - ch.start) / 3600e3;
   const span = dur > 20 ? `${Math.round(dur / 24) + 1} days` : dur > 3 ? `a full ${tod}` : `a ${tod}`;
-  if (i === 0) return `Day ${ch.day}: where it all began. We started in ${place} and spent ${span} soaking it in — ${n} photo${n > 1 ? 's' : ''} to prove it.`;
-  if (i === total - 1) return `The last stop: ${place}. ${n} final moment${n > 1 ? 's' : ''} before heading home, already planning the next trip.`;
-  const T = [
-    `Day ${ch.day} brought us to ${place}. ${cap(span)} of wandering, ${n} moments worth keeping.`,
-    `${cap(tod)} in ${place} — ${n} snapshot${n > 1 ? 's' : ''} from ${span} we won't forget.`,
-    `Next up, ${place}. New streets, new flavours, and ${n} photo${n > 1 ? 's' : ''} along the way.`,
-    `${place} on day ${ch.day}: slow, sunny and exactly what we needed.`,
-    `We reached ${place} in the ${tod}. The camera barely stayed in the bag — ${n} shots.`
+  const who = trip.travellers ? ` with ${trip.travellers}` : '';
+  const kind = trip.tripType ? `${trip.tripType.toLowerCase()} ` : '';
+  if (place) {
+    if (i === 0) return `Day ${ch.day} of our ${kind}trip${who}: where it all began. We started in ${place} and spent ${span} soaking it in — ${ph(n)} to prove it.`;
+    if (i === total - 1 && total > 1) return `The last stop: ${place}. ${ph(n, 'final moment')} before heading home, already planning the next trip.`;
+    const T = [
+      `Day ${ch.day} brought us to ${place}. ${cap(span)} of wandering, ${ph(n, 'moment')} worth keeping.`,
+      `${cap(tod)} in ${place} — ${ph(n, 'snapshot')} from ${span} we won't forget.`,
+      `Next up, ${place}. New streets, new flavours, and ${ph(n)} along the way.`,
+      `${place} on day ${ch.day}: slow, happy and exactly what we needed.`,
+      `We reached ${place} in the ${tod}. The camera barely stayed in the bag — ${ph(n, 'shot')}.`
+    ];
+    return T[i % T.length];
+  }
+  if (i === 0) return `Day ${ch.day}: where our ${kind}trip${who} began. ${cap(ph(n))} to remember the very first day.`;
+  if (i === total - 1 && total > 1) return `Our final day — ${ph(n, 'last moment')} before heading home, already missing it.`;
+  const T2 = [
+    `Day ${ch.day}: ${span} of making memories together — ${ph(n)}.`,
+    `Another ${tod} to remember. ${cap(ph(n, 'snapshot'))} we won't forget.`,
+    `Day ${ch.day} was all about slowing down and enjoying the moment.`,
+    `Laughs, good food and ${ph(n)} from day ${ch.day}.`
   ];
-  return T[i % T.length];
+  return T2[i % T2.length];
 }
 const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
 
@@ -351,7 +396,9 @@ function tripStats(trip) {
   let dist = 0; for (let i = 1; i < pts.length; i++) dist += km(pts[i - 1], pts[i]);
   const all = trip.chapters.flatMap(c => c.photoIds).map(id => S.photos.get(id)).filter(Boolean);
   const t = all.map(p => p.time);
-  const days = t.length ? Math.round((startOfDay(Math.max(...t)) - startOfDay(Math.min(...t))) / 864e5) + 1 : 0;
+  let days = t.length ? Math.round((startOfDay(Math.max(...t)) - startOfDay(Math.min(...t))) / 864e5) + 1 : 0;
+  const a = parseYmd(trip.startDate), b = parseYmd(trip.endDate);
+  if (a != null && b != null && b >= a) days = Math.max(days, Math.round((b - a) / 864e5) + 1);
   const countries = new Set(trip.chapters.map(c => c.country).filter(Boolean));
   return { km: Math.round(dist), days, places: new Set(trip.chapters.map(c => c.place || c.title)).size, photos: all.length, countries: countries.size, start: t.length ? Math.min(...t) : null, end: t.length ? Math.max(...t) : null };
 }
@@ -578,6 +625,7 @@ function renderPage(ctx, W, H, page, trip, img, pageNo) {
       ctx.font = `italic ${30 * u}px ${T.head}`; ctx.fillText('Until the next adventure', W / 2, H * 0.42);
       ctx.fillStyle = T.muted; ctx.font = `${13 * u}px ${T.font}`;
       ctx.fillText(`${st.days} days · ${st.places} stops · ${st.photos} photos${st.km ? ' · ' + st.km.toLocaleString() + ' km' : ''}`, W / 2, H * 0.42 + 34 * u);
+      if (trip.travellers) { ctx.font = `italic ${15 * u}px ${T.font}`; ctx.fillStyle = T.ink; ctx.fillText(`with ${trip.travellers}`, W / 2, H * 0.42 + 64 * u); }
       // MJ mark
       const s = 34 * u, x0 = W / 2 - s / 2, y0 = H - m - s - 24 * u;
       ctx.fillStyle = '#0E5E6F'; ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(x0, y0, s, s, 8 * u); else ctx.rect(x0, y0, s, s); ctx.fill();
@@ -613,9 +661,11 @@ function saveTrip(now) {
 }
 function subOf(trip) { return trip.subtitleEdited && trip.subtitle ? trip.subtitle : (S.trip && S.trip.id === trip.id ? defaultSubtitle(trip) : (trip.autoSub || '')); }
 function defaultSubtitle(trip) {
-  const st = tripStats(trip);
-  if (!st.start) return '';
-  return fmtRange(st.start, st.end);
+  const a = parseYmd(trip.startDate), b = parseYmd(trip.endDate || trip.startDate);
+  let range = '';
+  if (a != null) range = fmtRange(a, b != null && b >= a ? b : a);
+  else { const st = tripStats(trip); if (st.start) range = fmtRange(st.start, st.end); }
+  return [trip.destination, range].filter(Boolean).join(' · ');
 }
 
 /* ---------------- UI helpers ---------------- */
@@ -687,8 +737,9 @@ function render() {
     <div class="tabs">${tabs.map(([k, l]) => `<button data-tab="${k}" class="${S.tab === k ? 'on' : ''}">${l}</button>`).join('')}</div>
     <div id="tabBody"></div>`;
   const body = $('#tabBody');
-  if (!S.photos.size && S.tab !== 'settings') { body.innerHTML = dropView(); bindDrop(); return; }
-  if (S.tab === 'timeline') body.innerHTML = timelineView();
+  const daily = t.uploadMode === 'daily';
+  if (!S.photos.size && S.tab !== 'settings' && !(daily && S.tab === 'timeline')) { body.innerHTML = dropView(); bindDrop(); return; }
+  if (S.tab === 'timeline') body.innerHTML = daily ? dailyView() : timelineView();
   if (S.tab === 'map') { body.innerHTML = mapView(); drawMapTab(); }
   if (S.tab === 'book') { body.innerHTML = bookView(); mountBook(); }
   if (S.tab === 'settings') body.innerHTML = settingsView();
@@ -741,7 +792,9 @@ function bindDrop() {
 function timelineView() {
   const t = S.trip, chs = t.chapters;
   const noGps = [...S.photos.values()].every(p => p.lat == null);
+  const undated = [...S.photos.values()].filter(p => !p.exifTime && !p.day).length;
   return `
+    ${undated ? `<div class="hint">📅 <span><b>${undated} photo${undated > 1 ? 's have' : ' has'} no date</b> (common when picking photos on Android or from WhatsApp), so ${undated > 1 ? 'they may be' : 'it may be'} on the wrong day. Switch to <b>day-by-day upload</b> to put each photo on the right day.</span><button class="btn teal small" data-act="go-daily">Switch to day by day</button></div>` : ''}
     <div class="row" style="justify-content:space-between;margin-bottom:16px">
       <div class="sub">${chs.length} stop${chs.length === 1 ? '' : 's'}, grouped automatically by time and location.${noGps ? ' <b>No GPS found</b> — grouped by time only; rename stops below.' : ''}</div>
       <div class="row"><button class="btn line small" data-act="story">${ICONS.wand} Write captions (Story mode)</button><button class="btn teal small" data-tab="book">${ICONS.book} Make photo book</button></div>
@@ -857,9 +910,99 @@ function renderEditor() {
   if (page.type === 'map' || page.type === 'end' || page.type === 'notes') html += `<div class="sub">Generated automatically from your trip.</div>${page.type !== 'end' ? '<div class="row" style="margin-top:8px"><button class="btn line small" data-act="del-page">Delete page</button></div>' : ''}`;
   box.innerHTML = html;
 }
+function dailyView() {
+  const t = S.trip, keys = tripDays(t);
+  if (!keys.length) return `<div class="panel empty-note">Set your trip's start and end dates to add photos day by day.<div style="margin-top:12px"><button class="btn primary" data-act="edit-trip">Set trip dates</button></div></div>`;
+  const has = S.photos.size;
+  return `
+    <div class="row" style="justify-content:space-between;margin-bottom:16px">
+      <div class="sub">Day-by-day: add the photos for each day. They're placed on that day, even if the photo has no date.</div>
+      ${has ? `<div class="row"><button class="btn line small" data-act="story">${ICONS.wand} Write captions</button><button class="btn teal small" data-tab="book">${ICONS.book} Make photo book</button></div>` : ''}
+    </div>
+    ${keys.map((k, i) => {
+      const ch = t.chapters.find(c => c.dayKey === k), d = (t.days || {})[k] || {}, n = dayNum(t, k);
+      const inRange = (!t.startDate || k >= t.startDate) && (!t.endDate || k <= t.endDate);
+      return `
+      <div class="chapter day-card ${ch ? '' : 'empty'}" ${ch ? `data-ch="${ch.id}"` : ''} data-daykey="${k}">
+        <div class="rail"><div class="dot">${n}</div>${i < keys.length - 1 ? '<div class="vline"></div>' : ''}</div>
+        <div class="body">
+          <div class="kicker">Day ${n} · ${fmtDay(k)}${inRange ? '' : ' · outside trip dates'}</div>
+          <input class="title" data-df="place" value="${esc(d.place || (ch && ch.title && !/^Day \d+$/.test(ch.title) ? ch.title : ''))}" placeholder="📍 Add a place for day ${n}">
+          <textarea data-df="caption" rows="2" placeholder="What happened today? (or let Story mode write it)">${esc(ch ? ch.caption : (d.caption || ''))}</textarea>
+          ${ch ? `<div class="thumbs">${ch.photoIds.map(id => { const p = S.photos.get(id); if (!p) return ''; return `
+            <div class="thumb" data-pid="${id}"><img loading="lazy" src="${thumbURL(p)}" alt="">
+              <div class="acts"><button class="ib ${t.coverId === id ? 'on' : ''}" data-act="cover" title="Use as book cover">★</button><span class="row" style="gap:4px"><button class="ib" data-act="move-day" title="Move to another day">⇄</button><button class="ib" data-act="del-photo" title="Remove from trip">✕</button></span></div>
+              ${t.coverId === id ? '<span class="star">COVER</span>' : ''}
+            </div>`; }).join('')}</div>` : ''}
+          <div class="tools" style="justify-content:flex-start"><button class="btn ${ch ? 'line' : 'primary'} small" data-act="add-day" data-day="${k}">${ICONS.plus} ${ch ? 'Add more photos' : `Add photos for day ${n}`}</button>${ch ? `<span class="sub" style="align-self:center">${ch.photoIds.length} photo${ch.photoIds.length > 1 ? 's' : ''}</span>` : ''}</div>
+        </div>
+      </div>`; }).join('')}`;
+}
+function tripForm(t = {}, isNew = true) {
+  return new Promise(res => {
+    const mode = t.uploadMode || 'whole';
+    const m = modal(`<h2>${isNew ? 'New trip' : 'Trip details'}</h2>
+      <form id="tripF" class="trip-form">
+        <div class="field"><label>Trip name *</label><input name="title" required maxlength="80" value="${esc(t.title || '')}" placeholder="e.g. Salzburg family holiday"></div>
+        <div class="field"><label>Destination</label><input name="destination" maxlength="80" value="${esc(t.destination || '')}" placeholder="City, country — e.g. Salzburg, Austria"></div>
+        <div class="two">
+          <div class="field"><label>From</label><input type="date" name="startDate" value="${esc(t.startDate || '')}"></div>
+          <div class="field"><label>To</label><input type="date" name="endDate" value="${esc(t.endDate || '')}"></div>
+        </div>
+        <div class="two">
+          <div class="field"><label>Travelling with</label><input name="travellers" maxlength="60" value="${esc(t.travellers || '')}" placeholder="e.g. Kamil & family"></div>
+          <div class="field"><label>Trip type</label><select name="tripType"><option value="">—</option>${TRIP_TYPES.map(x => `<option ${t.tripType === x ? 'selected' : ''}>${x}</option>`).join('')}</select></div>
+        </div>
+        <div class="field"><label>Notes</label><textarea name="notes" rows="2" maxlength="500" placeholder="Hotel, flight, highlights… (optional)">${esc(t.notes || '')}</textarea></div>
+        <div class="field"><label>How do you want to add photos?</label>
+          <div class="mode-opts">
+            <label class="mode ${mode === 'whole' ? 'on' : ''}"><input type="radio" name="uploadMode" value="whole" ${mode === 'whole' ? 'checked' : ''}><b>📷 Whole trip at once</b><small>Pick all photos together. Grouped by their date & GPS.</small></label>
+            <label class="mode ${mode === 'daily' ? 'on' : ''}"><input type="radio" name="uploadMode" value="daily" ${mode === 'daily' ? 'checked' : ''}><b>📅 Day by day</b><small>Add photos for Day 1, Day 2… Best when photos have no date.</small></label>
+          </div>
+        </div>
+        <div class="err sub" style="color:#b3361b;min-height:18px"></div>
+        <div class="row" style="justify-content:flex-end"><button type="button" class="btn line" data-a="no">Cancel</button><button type="submit" class="btn primary">${isNew ? 'Create trip' : 'Save'}</button></div>
+      </form>`);
+    const f = $('#tripF', m.el);
+    if (isNew) setTimeout(() => f.elements.title.focus(), 50);
+    f.addEventListener('change', e => { if (e.target.name === 'uploadMode') f.querySelectorAll('.mode').forEach(x => x.classList.toggle('on', x.contains(e.target))); const E = f.elements; if (e.target.name === 'startDate' && E.endDate.value && E.endDate.value < E.startDate.value) E.endDate.value = E.startDate.value; if (e.target.name === 'startDate') E.endDate.min = E.startDate.value; });
+    f.addEventListener('submit', e => {
+      e.preventDefault();
+      const v = Object.fromEntries(new FormData(f).entries());
+      Object.keys(v).forEach(k => v[k] = String(v[k]).trim());
+      if (!v.title) { $('.err', m.el).textContent = 'Please give your trip a name.'; return; }
+      if (v.startDate && v.endDate && v.endDate < v.startDate) [v.startDate, v.endDate] = [v.endDate, v.startDate];
+      if (v.startDate && !v.endDate) v.endDate = v.startDate;
+      if (v.startDate && (parseYmd(v.endDate) - parseYmd(v.startDate)) / 864e5 > 90) { $('.err', m.el).textContent = 'Trips can be up to 90 days long.'; return; }
+      if (v.uploadMode === 'daily' && !v.startDate) { $('.err', m.el).textContent = 'Day-by-day needs the trip dates (From / To).'; return; }
+      m.close(); res(v);
+    });
+    m.el.addEventListener('click', e => { if (e.target.dataset.a === 'no' || e.target === m.el) { m.close(); res(null); } });
+  });
+}
+async function editTripDetails() {
+  const t = S.trip, before = JSON.stringify([t.startDate, t.endDate, t.uploadMode, t.destination]);
+  const v = await tripForm(t, false); if (!v) return;
+  Object.assign(t, v);
+  if (S.photos.size && before !== JSON.stringify([t.startDate, t.endDate, t.uploadMode, t.destination])) { regroup(); if (t.autoStory !== false) autoCaptions(); }
+  saveTrip(true); render(); toast('Trip details saved');
+}
+let pendingDay = null;
+function pickDayThenUpload() {
+  const t = S.trip, keys = tripDays(t);
+  const m = modal(`<h2>Add photos to…</h2><div class="day-pick">${keys.map(k => { const ch = t.chapters.find(c => c.dayKey === k), d = (t.days || {})[k] || {}; return `<button data-k="${k}"><b>Day ${dayNum(t, k)}</b><span>${fmtDay(k)}${d.place ? ' · ' + esc(d.place) : ''}</span><small>${ch ? ch.photoIds.length + (ch.photoIds.length > 1 ? ' photos' : ' photo') : 'empty'}</small></button>`; }).join('')}
+    <button data-k="auto"><b>Use photo dates</b><span>Sort by each photo's own date</span><small></small></button></div>
+    <div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn line" data-a="no">Cancel</button></div>`);
+  m.el.addEventListener('click', e => { const b = e.target.closest('[data-k]'); if (b) { pendingDay = b.dataset.k === 'auto' ? null : b.dataset.k; m.close(); $('#fileIn').click(); } else if (e.target.dataset.a || e.target === m.el) m.close(); });
+}
 function settingsView() {
   const t = S.trip;
-  return `<div class="panel" style="max-width:560px">
+  const info = [['Destination', t.destination], ['Dates', t.startDate ? fmtRange(parseYmd(t.startDate), parseYmd(t.endDate || t.startDate)) : ''], ['Travelling with', t.travellers], ['Trip type', t.tripType], ['Photos added', t.uploadMode === 'daily' ? 'Day by day' : 'Whole trip at once'], ['Notes', t.notes]];
+  return `<div class="panel" style="max-width:560px;margin-bottom:16px">
+    <div class="row" style="justify-content:space-between"><h2>Trip details</h2><button class="btn teal small" data-act="edit-trip">✎ Edit details</button></div>
+    <dl class="info">${info.map(([k, v]) => `<dt>${k}</dt><dd>${v ? esc(v) : '<span class="sub">—</span>'}</dd>`).join('')}</dl>
+  </div>
+  <div class="panel" style="max-width:560px">
     <div class="field"><label>Trip name</label><input data-trip="title" value="${esc(t.title)}"></div>
     <div class="field"><label>Subtitle (shown on cover)</label><input data-trip="subtitle" value="${esc(t.subtitleEdited ? t.subtitle : '')}" placeholder="${esc(defaultSubtitle(t) || 'Dates are filled in automatically')}"></div>
     <label class="row" style="margin:4px 0 14px;gap:8px;cursor:pointer"><input type="checkbox" data-toggle="autoStory" ${t.autoStory !== false ? 'checked' : ''}> Auto-write story & offer music when adding photos</label>
@@ -868,7 +1011,7 @@ function settingsView() {
   </div>`;
 }
 
-const APP_VERSION = '1.1.0';
+const APP_VERSION = '1.2.0';
 function showAbout() {
   const logo = $('#homeBtn svg').outerHTML.replace('<svg', '<svg style="width:72px;height:72px"');
   const m = modal(`<div style="text-align:center">${logo}
@@ -882,24 +1025,24 @@ function showAbout() {
 
 /* ---------------- Actions ---------------- */
 async function newTrip(title, opts = {}) {
-  const t = { id: uid(), title: title || 'My trip', subtitle: '', createdAt: Date.now(), updatedAt: Date.now(), chapters: [], pages: null, cover: 'hardcover', size: 'square', theme: 'classic', coverId: null, count: 0, music: 'calm', autoStory: true, ...opts };
+  const t = { id: uid(), title: title || 'My trip', subtitle: '', createdAt: Date.now(), updatedAt: Date.now(), chapters: [], pages: null, cover: 'hardcover', size: 'square', theme: 'classic', coverId: null, count: 0, music: 'calm', autoStory: true, uploadMode: 'whole', days: {}, destination: '', startDate: '', endDate: '', travellers: '', tripType: '', notes: '', ...opts };
   await DB.put('trips', t);
   await openTrip(t.id);
 }
-async function importFiles(fileList) {
+async function importFiles(fileList, day = null) {
   if (!S.trip) return;
   let files = [...fileList].filter(f => /^image\//.test(f.type) || /\.(jpe?g|png|webp|gif|heic|heif|avif)$/i.test(f.name));
   if (!files.length) { toast('No images found in that selection'); return; }
   const room = MAX_PHOTOS - S.photos.size;
   if (room <= 0) { toast(`This trip already has ${MAX_PHOTOS} photos (the maximum)`); return; }
   if (files.length > room) { toast(`Only the first ${room} photos were added (max ${MAX_PHOTOS} per trip)`); files = files.slice(0, room); }
-  const pg = progress(`Importing ${files.length} photo${files.length > 1 ? 's' : ''}`);
+  const pg = progress(`Importing ${files.length} photo${files.length > 1 ? 's' : ''}${day ? ' for day ' + dayNum(S.trip, day) : ''}`);
   let done = 0, failed = 0, i = 0;
   const worker = async () => {
     while (i < files.length) {
-      const f = files[i++];
+      const idx = i, f = files[i++];
       try {
-        const p = await processFile(f, S.trip.id);
+        const p = await processFile(f, S.trip.id, day, idx);
         await DB.put('photos', p); S.photos.set(p.id, p);
       } catch (e) { failed++; }
       done++; pg.set(done / files.length, `${done} / ${files.length} processed${failed ? ` · ${failed} skipped` : ''}`);
@@ -917,7 +1060,7 @@ async function importFiles(fileList) {
 }
 function regroup() {
   const t = S.trip;
-  t.chapters = autoGroup([...S.photos.values()], t.chapters);
+  t.chapters = autoGroup([...S.photos.values()], t.chapters, t);
   if (!t.coverId || !S.photos.has(t.coverId)) t.coverId = t.chapters[0]?.photoIds[0] || null;
   t.count = S.photos.size; t.pages = null;
   saveTrip(true);
@@ -1033,9 +1176,41 @@ document.addEventListener('click', async e => {
   const chEl = el.closest('[data-ch]'), ch = chEl && t && t.chapters.find(c => c.id === chEl.dataset.ch);
   const pi = t && t.pages ? t.pages.findIndex(p => p.id === S.sel) : -1, page = pi >= 0 ? t.pages[pi] : null;
   switch (act) {
-    case 'new-trip': { const name = await ask('New trip', 'Trip name', ''); if (name !== null) await newTrip(name || 'My trip'); break; }
+    case 'new-trip': { const v = await tripForm({}, true); if (v) { await newTrip(v.title, v); if (v.uploadMode === 'whole') setTimeout(() => toast('Now add your trip photos'), 300); } break; }
+    case 'edit-trip': editTripDetails(); break;
+    case 'add-day': pendingDay = el.dataset.day; $('#fileIn').click(); break;
+    case 'move-day': {
+      const id = el.closest('[data-pid]').dataset.pid, ph = S.photos.get(id), keys = tripDays(t), cur = ymd(ph.time);
+      const m = modal(`<h2>Move photo to…</h2><div class="day-pick">${keys.map(k => `<button data-k="${k}" ${k === cur ? 'disabled style="opacity:.5"' : ''}><b>Day ${dayNum(t, k)}</b><span>${fmtDay(k)}${(t.days || {})[k] && t.days[k].place ? ' · ' + esc(t.days[k].place) : ''}</span><small>${k === cur ? 'current' : ''}</small></button>`).join('')}</div><div class="row" style="justify-content:flex-end;margin-top:12px"><button class="btn line" data-a="no">Cancel</button></div>`);
+      m.el.addEventListener('click', async e2 => {
+        const bt = e2.target.closest('[data-k]');
+        if (bt && !bt.disabled) {
+          m.close();
+          const k = bt.dataset.k, sameDay = [...S.photos.values()].filter(x => ymd(x.time) === k).length;
+          ph.day = k; ph.time = ph.exifTime ? dayTime(k, ph.time, 0) : dayTime(k, null, sameDay);
+          await DB.put('photos', ph); regroup(); if (t.autoStory !== false) autoCaptions(); saveTrip(true); render(); toast(`Moved to day ${dayNum(t, k)}`);
+        } else if (e2.target.dataset.a || e2.target === m.el) m.close();
+      });
+      break;
+    }
+    case 'go-daily': {
+      const st = tripStats(t), allDated = [...S.photos.values()].every(p => p.exifTime || p.day);
+      if (!t.startDate && st.start && allDated) { t.startDate = ymd(st.start); t.endDate = ymd(st.end); }
+      if (!t.startDate) {
+        const v = await tripForm({ ...t, uploadMode: 'daily' }, false); if (!v) break;
+        Object.assign(t, v);
+        // undated photos go to day 1; move them with ⇄
+        S.photos.forEach(p => { if (!p.exifTime && !p.day) { p.day = t.startDate; p.time = dayTime(t.startDate, null, 0); DB.put('photos', p); } });
+        regroup(); if (t.autoStory !== false) autoCaptions(); saveTrip(true); render();
+        toast('Undated photos were put on Day 1 — tap ⇄ on a photo to move it');
+        break;
+      }
+      t.uploadMode = 'daily';
+      regroup(); saveTrip(true); render(); toast('Day-by-day on — drag or add photos into each day');
+      break;
+    }
     case 'demo': demoTrip(); break;
-    case 'add-photos': $('#fileIn').click(); break;
+    case 'add-photos': if (t && t.uploadMode === 'daily' && tripDays(t).length) pickDayThenUpload(); else { pendingDay = null; $('#fileIn').click(); } break;
     case 'story': storyMode(); break;
     case 'cover': { t.coverId = el.closest('[data-pid]').dataset.pid; t.pages = null; saveTrip(); render(); toast('Cover photo set'); break; }
     case 'del-photo': {
@@ -1078,6 +1253,11 @@ document.addEventListener('click', async e => {
     }
     case 'rename-trip': {
       const id = el.dataset.id || (t && t.id);
+      if (!t || t.id !== id) { await openTrip(id); }
+      editTripDetails(); break;
+    }
+    case 'rename-only': {
+      const id = el.dataset.id || (t && t.id);
       const tr = (S.trip && S.trip.id === id) ? S.trip : await DB.get('trips', id);
       const name = await ask('Rename trip', 'Trip name', tr.title || '', 'Save');
       if (name) { tr.title = name; tr.updatedAt = Date.now(); if (S.trip && S.trip.id === id) { saveTrip(true); } else { await DB.put('trips', tr); await loadTrips(); } render(); }
@@ -1090,12 +1270,24 @@ document.addEventListener('click', async e => {
 document.addEventListener('input', e => {
   const el = e.target, t = S.trip; if (!t) return;
   if (el.dataset.toggle) { t[el.dataset.toggle] = el.checked; saveTrip(); return; }
+  if (el.dataset.df) {
+    const key = el.closest('[data-daykey]').dataset.daykey; t.days = t.days || {};
+    const d = t.days[key] = { ...(t.days[key] || {}), [el.dataset.df]: el.value };
+    const ch = t.chapters.find(c => c.dayKey === key);
+    if (ch) {
+      if (el.dataset.df === 'place') {
+        ch.title = el.value || `Day ${ch.day}`; ch.place = el.value || ch.place;
+        if (!ch.edited && t.autoStory !== false) { const i = t.chapters.indexOf(ch); ch.caption = storyCaption(ch, i, t.chapters.length); const ta = el.closest('.body').querySelector('[data-df=caption]'); if (ta) ta.value = ch.caption; }
+      } else { ch.caption = el.value; ch.edited = true; }
+    }
+    saveTrip(); return;
+  }
   if (el.dataset.f) { const ch = t.chapters.find(c => c.id === el.closest('[data-ch]').dataset.ch); ch[el.dataset.f] = el.value; ch.edited = true; saveTrip(); return; }
   if (el.dataset.trip) { t[el.dataset.trip] = el.value; if (el.dataset.trip === 'subtitle') t.subtitleEdited = !!el.value.trim(); $('#crumb').textContent = '/ ' + (t.title || 'Untitled trip'); saveTrip(); const cov = t.pages && t.pages[0]; if (cov) redrawPage(cov.id); return; }
   if (el.dataset.chF) { const page = t.pages.find(p => p.id === S.sel), ch = t.chapters.find(c => c.id === page.chapterId); ch[el.dataset.chF] = el.value; ch.edited = true; saveTrip(); redrawPage(page.id); return; }
   if ('pageCap' in el.dataset) { const page = t.pages.find(p => p.id === S.sel); page.caption = el.value; saveTrip(); redrawPage(page.id); }
 });
-$('#fileIn').addEventListener('change', e => { const f = e.target.files; if (f && f.length) importFiles(f); e.target.value = ''; });
+$('#fileIn').addEventListener('change', e => { const f = e.target.files; if (f && f.length) importFiles(f, pendingDay); pendingDay = null; e.target.value = ''; });
 const goHome = async () => { if (S.trip) await saveTrip(true); S.trip = null; S.sel = null; await loadTrips(); render(); window.scrollTo(0, 0); };
 $('#homeBtn').addEventListener('click', goHome);
 let rT; window.addEventListener('resize', () => { clearTimeout(rT); rT = setTimeout(() => { if (S.trip && (S.tab === 'map')) drawMapTab(); if (S.trip && S.tab === 'book') mountBook(); }, 250); });
